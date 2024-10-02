@@ -59,6 +59,7 @@ jobs:
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CPP_LINTER_COLOR: true
         run: >
           cpp-linter
           -s=file
