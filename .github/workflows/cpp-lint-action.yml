@@ -3,6 +3,7 @@ name: cpp-linter as action
 on:
   workflow_dispatch:
   workflow_call:
+  pull_request:
 
 
 jobs:
@@ -38,10 +39,11 @@ jobs:
         run: mkdir build && cmake -Bbuild src
 
       - name: Run linter as action
-        uses: cpp-linter/cpp-linter-action@main
+        uses: cpp-linter/cpp-linter-action@opt-in-color
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CPP_LINTER_COLOR: true
         with:
           style: file
           files-changed-only: false
