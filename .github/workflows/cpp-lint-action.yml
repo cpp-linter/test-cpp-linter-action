@@ -14,10 +14,11 @@ jobs:
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:latest' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: true
+          # submodules: true
           repository: cpp-linter/test-cpp-linter-action
 
       - name: Cache the build artifacts
@@ -27,6 +28,11 @@ jobs:
           path: build
           key: ${{ runner.os }}-${{ hashFiles('src/CMakeLists.txt', 'src/demo.cpp', 'src/demo.hpp') }}
 
+      - name: Install necessary Linux tools
+        if: matrix.os == 'ubuntu-latest'
+        run: >-
+          apt-get update &&
+          apt-get install -y libc6 cmake gcc g++ wget lsb-release
       - name: Generate compilation database
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: mkdir build && cmake -Bbuild src
@@ -40,7 +46,7 @@ jobs:
           style: file
           files-changed-only: false
           # to ignore all build folder contents
-          ignore: build/**
+          ignore: build
           database: build
           verbosity: info
           version: ${{ matrix.clang-version }}
