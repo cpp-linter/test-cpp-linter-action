@@ -40,9 +40,9 @@ jobs:
           style: file
           files-changed-only: false
           # to ignore all build folder contents
-          ignore: build
+          ignore: build/**
           database: build
-          verbosity: 9
+          verbosity: info
           version: ${{ matrix.clang-version }}
           thread-comments: ${{ matrix.clang-version == '12' }}
           file-annotations: ${{ matrix.clang-version == '12' }}
