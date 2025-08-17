@@ -69,6 +69,10 @@ jobs:
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
-        run: echo "Some files failed the linting checks!"
+        run: |
+          echo "some linter checks failed"
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
         # for actual deployment
         # run: exit 1
