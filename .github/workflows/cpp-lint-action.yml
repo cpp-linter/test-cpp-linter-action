@@ -10,14 +10,15 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        clang-version: ['9','10', '11', '12', '13', '14', '15', '16', '17', '18']
+        clang-version: ['9','10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20']
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:latest' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: true
+          submodules: ${{ matrix.os != 'ubuntu-latest' }}
           repository: cpp-linter/test-cpp-linter-action
 
       - name: Cache the build artifacts
@@ -27,12 +28,17 @@ jobs:
           path: build
           key: ${{ runner.os }}-${{ hashFiles('src/CMakeLists.txt', 'src/demo.cpp', 'src/demo.hpp') }}
 
+      - name: Install necessary Linux tools
+        if: matrix.os == 'ubuntu-latest'
+        run: >-
+          apt-get update &&
+          apt-get install -y libc6 cmake gcc g++ wget lsb-release
       - name: Generate compilation database
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: mkdir build && cmake -Bbuild src
 
       - name: Run linter as action
-        uses: cpp-linter/cpp-linter-action@latest
+        uses: cpp-linter/cpp-linter-action@main
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,17 +48,18 @@ jobs:
           # to ignore all build folder contents
           ignore: build
           database: build
-          verbosity: 9
+          verbosity: debug
           version: ${{ matrix.clang-version }}
-          thread-comments: ${{ matrix.clang-version == '12' }}
-          file-annotations: ${{ matrix.clang-version == '12' }}
+          thread-comments: ${{ matrix.clang-version == '17' && 'update' }}
+          file-annotations: ${{ matrix.clang-version == '17' }}
           extra-args: -std=c++14 -Wall
 
       - name: Fail fast?!
         # if: steps.linter.outputs.checks-failed > 0
-        run: | 
+        run: |
           echo "some linter checks failed"
-          echo "${{ steps.linter.outputs.checks-failed }}"
-          echo "${{ env.checks-failed }}"
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
         # for actual deployment
         # run: exit 1

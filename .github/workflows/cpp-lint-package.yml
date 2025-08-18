@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-        clang-version: ['7', '8', '9','10', '11', '12', '13', '14', '15', '16', '17']
+        clang-version: ['9','10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20']
         repo: ['cpp-linter/cpp-linter']
         branch: ['${{ inputs.branch }}']
       fail-fast: false
@@ -69,6 +69,10 @@ jobs:
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
-        run: echo "Some files failed the linting checks!"
+        run: |
+          echo "some linter checks failed"
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
         # for actual deployment
         # run: exit 1
