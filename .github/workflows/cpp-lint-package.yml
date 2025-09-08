@@ -36,7 +36,7 @@ jobs:
         run: clang-tools --install ${{ matrix.clang-version }} --directory ${{ runner.temp }}/llvm
 
       - name: Setup VS dev env
-        uses: TheMrMilchmann/setup-msvc-dev@v3
+        uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: x64
 
