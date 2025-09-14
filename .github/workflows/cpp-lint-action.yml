@@ -38,7 +38,7 @@ jobs:
         run: mkdir build && cmake -Bbuild src
 
       - name: Run linter as action
-        uses: cpp-linter/cpp-linter-action@main
+        uses: cpp-linter/cpp-linter-action@dependabot/uv/pip-7d7e6381bc
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
