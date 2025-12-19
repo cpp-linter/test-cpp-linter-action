@@ -36,10 +36,10 @@ jobs:
           apt-get install -y libc6 cmake gcc g++ wget lsb-release
       - name: Generate compilation database
         if: steps.cache-build.outputs.cache-hit != 'true'
-        run: mkdir build && cmake -Bbuild src
+        run: mkdir build && cmake build src
 
       - name: Run linter as action
-        uses: cpp-linter/cpp-linter-action@main
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

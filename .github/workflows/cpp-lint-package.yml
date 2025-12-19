@@ -7,6 +7,7 @@ on:
         description: 'which branch to test'
         default: 'main'
         required: true
+  pull_request:
 
 jobs:
   cpp-linter:
@@ -15,8 +16,8 @@ jobs:
     strategy:
       matrix:
         clang-version: ['9','10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20']
-        repo: ['cpp-linter/cpp-linter']
-        branch: ['${{ inputs.branch }}']
+        repo: ['cpp-linter/cpp-linter-rs']
+        branch: ['hide-reuse-reviews'] # ['${{ inputs.branch }}']
       fail-fast: false
 
     steps:
@@ -31,7 +32,11 @@ jobs:
           python-version: 3.x
 
       - name: Install workflow deps
-        run: python -m pip install clang-tools git+https://github.com/${{ matrix.repo }}/@${{ matrix.branch }}
+        # run: python -m pip install clang-tools git+https://github.com/${{ matrix.repo }}/@${{ matrix.branch }}
+        run: |
+          python -m pip install clang-tools
+          python -m pip install git+https://github.com/${{ matrix.repo }}.git@${{ matrix.branch }}
+        # python -m pip install -i https://test.pypi.org/simple/ cpp-linter==2.0.0rc12
 
       - name: Install clang-tools
         run: clang-tools --install ${{ matrix.clang-version }} --directory ${{ runner.temp }}/llvm
@@ -56,6 +61,7 @@ jobs:
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CPP_LINTER_COLOR: true
         run: >
           cpp-linter
           -s=file
@@ -63,10 +69,12 @@ jobs:
           -i=build
           -p=build
           -V=${{ runner.temp }}/llvm
-          -f=false
+          -l=false
           --extra-arg="-std=c++14 -Wall"
           --thread-comments=${{ matrix.clang-version == '17' && 'update' }}
           -a=${{ matrix.clang-version == '17' }}
+          --tidy-review=${{ matrix.clang-version == '17' }}
+          --format-review=${{ matrix.clang-version == '17' }}
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
