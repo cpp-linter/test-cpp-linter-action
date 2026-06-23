@@ -44,7 +44,7 @@ jobs:
           lsb-release
       - name: Generate compilation database
         if: steps.cache-build.outputs.cache-hit != 'true'
-        run: mkdir build && cmake build src
+        run: mkdir build && cmake -B build -S src
 
       - name: Run linter as action
         uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
