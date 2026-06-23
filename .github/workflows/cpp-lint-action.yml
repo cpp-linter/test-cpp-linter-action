@@ -62,6 +62,7 @@ jobs:
           thread-comments: ${{ matrix.clang-version == '17' && 'update' }}
           file-annotations: ${{ matrix.clang-version == '17' }}
           extra-args: -std=c++14 -Wall
+          step-summary: true
 
       - name: Fail fast?!
         # if: steps.linter.outputs.checks-failed > 0

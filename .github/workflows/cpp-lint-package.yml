@@ -70,6 +70,7 @@ jobs:
           -p=build
           -V=${{ matrix.clang-version }}
           -l=false
+          --step-summary=true
           --extra-arg="-std=c++14 -Wall"
           --thread-comments=${{ matrix.clang-version == '17' && 'update' }}
           -a=${{ matrix.clang-version == '17' }}
