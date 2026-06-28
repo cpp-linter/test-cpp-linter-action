@@ -85,3 +85,11 @@ jobs:
           echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
         # for actual deployment
         # run: exit 1
+
+      - name: Apply patch
+        if: steps.linter.outputs.fix-patch-path != ''
+        env:
+          PATCH_PATH: ${{ steps.linter.outputs.fix-patch-path }}
+        run: |-
+          echo "applying patch"
+          git apply $env:PATCH_PATH
