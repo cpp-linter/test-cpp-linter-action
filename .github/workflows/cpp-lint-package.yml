@@ -7,6 +7,7 @@ on:
         description: 'which branch to test'
         default: 'main'
         required: true
+  pull_request:
 
 jobs:
   cpp-linter:
@@ -14,8 +15,8 @@ jobs:
 
     strategy:
       matrix:
-        clang-version: ['11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22']
-        repo: ['cpp-linter/cpp-linter']
+        clang-version: ['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22']
+        repo: ['cpp-linter/cpp-linter-rs']
         branch: ['${{ inputs.branch }}']
       fail-fast: false
 
@@ -31,10 +32,14 @@ jobs:
           python-version: 3.x
 
       - name: Install workflow deps
-        run: python -m pip install clang-tools git+https://github.com/${{ matrix.repo }}/@${{ matrix.branch }}
+        # run: python -m pip install clang-tools git+https://github.com/${{ matrix.repo }}/@${{ matrix.branch }}
+        # python -m pip install clang-tools
+        # python -m pip install git+https://github.com/${{ matrix.repo }}.git@${{ matrix.branch }}
+        run: |
+          python -m pip install -i https://test.pypi.org/simple/ cpp-linter==2.0.0rc22
 
-      - name: Install clang-tools
-        run: clang-tools --install ${{ matrix.clang-version }} --directory ${{ runner.temp }}/llvm
+      # - name: Install clang-tools
+      #   run: clang-tools --install ${{ matrix.clang-version }} --directory ${{ runner.temp }}/llvm
 
       - name: Setup VS dev env
         uses: TheMrMilchmann/setup-msvc-dev@v4
@@ -50,23 +55,26 @@ jobs:
 
       - name: Generate  compiler database
         if: steps.cache-build.outputs.cache-hit != 'true'
-        run: mkdir build && cmake -Bbuild src -G "NMake Makefiles"
+        run: mkdir build && cmake -B build -S src -G "NMake Makefiles"
 
       - name: Run linter as package
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CPP_LINTER_COLOR: true
         run: >
           cpp-linter
           -s=file
           -v=debug
           -i=build
           -p=build
-          -V=${{ runner.temp }}/llvm
-          -f=false
+          -V=${{ matrix.clang-version }}
+          -l=false
+          --step-summary=true
           --extra-arg="-std=c++14 -Wall"
           --thread-comments=${{ matrix.clang-version == '17' && 'update' }}
           -a=${{ matrix.clang-version == '17' }}
+          --pr-review=${{ matrix.clang-version == '17' }}
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
@@ -77,3 +85,11 @@ jobs:
           echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
         # for actual deployment
         # run: exit 1
+
+      - name: Apply patch
+        if: steps.linter.outputs.fix-patch-path != ''
+        env:
+          PATCH_PATH: ${{ steps.linter.outputs.fix-patch-path }}
+        run: |-
+          echo "applying patch"
+          git apply $env:PATCH_PATH
