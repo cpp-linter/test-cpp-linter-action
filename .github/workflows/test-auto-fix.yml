@@ -1,0 +1,31 @@
+name: e2e auto-fix test
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  auto-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cpp-linter/cpp-linter-action@test/auto-fix-e2e
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: '-*'  # disable clang-tidy; test clang-format auto-fix only
+          files-changed-only: false
+          version: '18'
+          auto-fix: true
+          verbosity: debug
+
+      - name: Report
+        run: |
+          echo "clang-format-checks-failed: ${{ steps.linter.outputs.clang-format-checks-failed }}"
