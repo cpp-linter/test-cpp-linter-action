@@ -1,0 +1,195 @@
+name: auto-fix e2e
+
+# End-to-end test for the `auto-fix` feature, exercised WITHOUT merging either
+# of the two pull requests it depends on:
+#
+#   - cpp-linter/cpp-linter-action#443  (the `auto-fix` input)
+#   - cpp-linter/cpp-linter#202         (the `--fix` CLI flag)
+#
+# The action is checked out at its PR branch and used as a local action, and the
+# `cpp-linter` version it pins is rewritten in the workspace to install from the
+# cpp-linter PR branch instead. Nothing is patched anywhere but this runner.
+#
+# Triggered by pushing to the test branch: a `workflow_dispatch`-only workflow is
+# not dispatchable until it lands on the default branch, which is exactly what we
+# are avoiding here. Pushes made with GITHUB_TOKEN do not start new workflow
+# runs, so the auto-fix commit cannot re-trigger this job.
+
+on:
+  push:
+    branches: ['claude/cpp-linter-org-gaps-z9fuep']
+  workflow_dispatch:
+    inputs:
+      action-ref:
+        description: 'cpp-linter-action ref to test'
+        default: 'feature/auto-fix'
+      cpp-linter-ref:
+        description: 'cpp-linter ref providing --fix'
+        default: 'feature/auto-fix'
+
+permissions:
+  contents: write
+
+env:
+  CPP_LINTER_REF: ${{ inputs.cpp-linter-ref || 'feature/auto-fix' }}
+  ACTION_DIR: .action-under-test
+  TEST_FILE: src/e2e_autofix_demo.cpp
+  CLANG_VERSION: '18'
+  COMMIT_MSG: 'style: apply clang-format fixes'
+
+jobs:
+  auto-fix:
+    runs-on: ubuntu-latest
+    steps:
+      # `persist-credentials` must stay enabled (the default): auto-fix pushes
+      # using the credentials this step leaves behind. Full history keeps the
+      # later push from being rejected as a shallow update.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Checked out into a fixed path because `uses:` cannot take an expression.
+      - name: Check out the action under test
+        uses: actions/checkout@v7
+        with:
+          repository: cpp-linter/cpp-linter-action
+          ref: ${{ inputs.action-ref || 'feature/auto-fix' }}
+          path: .action-under-test
+          persist-credentials: false
+
+      - name: Point the action at the cpp-linter PR branch
+        run: |
+          set -euo pipefail
+          cd "$ACTION_DIR"
+          python3 - "$CPP_LINTER_REF" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          ref = sys.argv[1]
+          spec = f"cpp-linter @ git+https://github.com/cpp-linter/cpp-linter.git@{ref}"
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          patched, count = re.subn(r'"cpp-linter==[^"]+"', f'"{spec}"', text)
+          if count != 1:
+              sys.exit(f"expected exactly 1 cpp-linter pin, patched {count}")
+          path.write_text(patched, encoding="utf-8")
+          print(patched)
+          PY
+          # `uv sync` runs without --frozen/--locked, but drop the lock anyway so
+          # it is forced to re-resolve against the git dependency.
+          rm -f uv.lock
+
+      # The fixture has to be committed while still malformed: clang-format fixes
+      # it in place and the action stages the result with `git add -u`, which only
+      # picks up modifications to tracked files.
+      - name: Commit a deliberately malformed source file
+        run: |
+          set -euo pipefail
+          cat > "$TEST_FILE" <<'CPP'
+          #include <stdio.h>
+          int main( ){int x=0 ;for(;;){break;}printf("Hello world!\n") ;return x;}
+          CPP
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$TEST_FILE"
+          git commit -m "test: add malformed source for auto-fix e2e [skip ci]"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          {
+            echo "MALFORMED_SHA=$(git rev-parse HEAD)"
+            echo "MALFORMED_BLOB=$(git hash-object "$TEST_FILE")"
+          } >> "$GITHUB_ENV"
+
+      # clang-tidy is switched off (`tidy-checks: '-*'`) so this exercises the
+      # clang-format auto-fix path only, and needs no compilation database.
+      - name: Run cpp-linter with auto-fix
+        uses: ./.action-under-test
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: '-*'
+          files-changed-only: false
+          lines-changed-only: false
+          ignore: build|.action-under-test
+          version: '18'
+          verbosity: debug
+          auto-fix: true
+          auto-fix-commit-msg: 'style: apply clang-format fixes'
+
+      - name: Verify the fix was applied, committed and pushed
+        run: |
+          set -uo pipefail
+          failed=0
+
+          echo "::group::resulting file"
+          cat "$TEST_FILE"
+          echo "::endgroup::"
+
+          if [ "$(git hash-object "$TEST_FILE")" = "$MALFORMED_BLOB" ]; then
+            echo "::error title=Not reformatted::$TEST_FILE is byte-identical to the malformed input; --fix did not rewrite it."
+            failed=1
+          else
+            echo "PASS: file was reformatted"
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          subject="$(git log -1 --pretty=%s)"
+          if [ "$head_sha" = "$MALFORMED_SHA" ]; then
+            echo "::error title=No commit::auto-fix produced no commit (HEAD is still the malformed commit)."
+            failed=1
+          else
+            echo "PASS: auto-fix commit $head_sha"
+            echo "      subject: $subject"
+            echo "      author:  $(git log -1 --pretty='%an <%ae>')"
+          fi
+
+          if [ "$subject" != "$COMMIT_MSG" ]; then
+            echo "::error title=Wrong commit message::expected '$COMMIT_MSG', got '$subject'"
+            failed=1
+          else
+            echo "PASS: commit message matches auto-fix-commit-msg"
+          fi
+
+          # The committed result must itself be clang-format clean. The action
+          # installs the tool into its own prefix, so only check when reachable.
+          fmt="$(command -v "clang-format-${CLANG_VERSION}" || command -v clang-format || true)"
+          if [ -n "$fmt" ]; then
+            if "$fmt" --style=file --dry-run --Werror "$TEST_FILE"; then
+              echo "PASS: committed file satisfies .clang-format"
+            else
+              echo "::error title=Still unformatted::the committed file still violates .clang-format"
+              failed=1
+            fi
+          else
+            echo "note: clang-format not on PATH here; skipped the re-check"
+          fi
+
+          # The fix must exist on the remote, not only in this workspace.
+          git fetch -q origin "$GITHUB_REF_NAME"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$head_sha" ]; then
+            echo "::error title=Not pushed::the auto-fix commit is not on origin/$GITHUB_REF_NAME"
+            failed=1
+          else
+            echo "PASS: auto-fix commit is present on origin/$GITHUB_REF_NAME"
+          fi
+
+          if [ "$failed" -eq 0 ]; then
+            echo "auto-fix e2e PASSED"
+          fi
+          exit "$failed"
+
+      - name: Remove the test fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -f "$TEST_FILE" ]; then
+            echo "nothing to clean up"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -q "$TEST_FILE"
+          git commit -m "test: drop auto-fix e2e fixture [skip ci]"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
