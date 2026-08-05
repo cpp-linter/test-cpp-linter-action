@@ -1,0 +1,182 @@
+name: auto-fix PR e2e
+
+# Phase 2 of the auto-fix end-to-end test: the pull-request path.
+#
+# Phase 1 (auto-fix-e2e.yml) covers the push path, where the action derives the
+# branch from GITHUB_REF. This workflow covers what only a real PR can exercise:
+#
+#   - the "Checkout PR branch for auto-fix push capability" step, which switches
+#     the runner off the PR *merge* ref and onto the PR *head* branch
+#   - the same-repository gating that gets applied to that step
+#   - pushing the fix back onto the PR head branch, so the PR updates itself
+#
+# As in phase 1, neither cpp-linter-action#443 nor cpp-linter#202 needs to be
+# merged: the action is consumed from its PR branch as a local action, and the
+# cpp-linter version it pins is rewritten in this runner's workspace.
+#
+# Workflows added by a pull request do run for `pull_request` events, so this
+# file takes effect from the PR branch itself.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+env:
+  CPP_LINTER_REF: 'feature/auto-fix'
+  ACTION_DIR: .action-under-test
+  TEST_FILE: src/e2e_autofix_pr_demo.cpp
+  CLANG_VERSION: '18'
+  COMMIT_MSG: 'style: apply clang-format fixes'
+
+jobs:
+  auto-fix-pr:
+    # Only ever run for the dedicated e2e branch, never for real pull requests.
+    if: startsWith(github.head_ref, 'test/auto-fix-pr-e2e')
+    runs-on: ubuntu-latest
+    steps:
+      # `persist-credentials` stays enabled (the default) so the action can fetch
+      # the head branch and push the fix back to it.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out the action under test
+        uses: actions/checkout@v7
+        with:
+          repository: cpp-linter/cpp-linter-action
+          ref: feature/auto-fix
+          path: .action-under-test
+          persist-credentials: false
+
+      - name: Point the action at the cpp-linter PR branch
+        run: |
+          set -euo pipefail
+          cd "$ACTION_DIR"
+          python3 - "$CPP_LINTER_REF" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          ref = sys.argv[1]
+          spec = f"cpp-linter @ git+https://github.com/cpp-linter/cpp-linter.git@{ref}"
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          patched, count = re.subn(r'"cpp-linter==[^"]+"', f'"{spec}"', text)
+          if count != 1:
+              sys.exit(f"expected exactly 1 cpp-linter pin, patched {count}")
+          path.write_text(patched, encoding="utf-8")
+          print(patched)
+          PY
+          rm -f uv.lock
+
+      - name: Record the pre-fix state
+        run: |
+          set -euo pipefail
+          echo "::group::fixture before"
+          cat "$TEST_FILE"
+          echo "::endgroup::"
+          {
+            echo "MALFORMED_BLOB=$(git hash-object "$TEST_FILE")"
+            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+          } >> "$GITHUB_ENV"
+
+      # `files-changed-only: true` is deliberate and load-bearing: src/demo.cpp
+      # and src/demo.hpp are intentionally unformatted fixtures of this repo, and
+      # scanning everything would make auto-fix "repair" and commit them too.
+      # clang-tidy is off so this measures the clang-format path only.
+      - name: Run cpp-linter with auto-fix
+        uses: ./.action-under-test
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: '-*'
+          files-changed-only: true
+          lines-changed-only: false
+          ignore: build|.action-under-test
+          version: '18'
+          verbosity: debug
+          auto-fix: true
+          auto-fix-commit-msg: 'style: apply clang-format fixes'
+
+      - name: Verify the PR branch was fixed and updated
+        run: |
+          set -uo pipefail
+          failed=0
+          head_ref='${{ github.event.pull_request.head.ref }}'
+
+          echo "::group::fixture after"
+          cat "$TEST_FILE"
+          echo "::endgroup::"
+
+          # The action must have moved the runner onto the PR head branch.
+          current="$(git rev-parse --abbrev-ref HEAD)"
+          if [ "$current" != "$head_ref" ]; then
+            echo "::error title=Wrong branch::expected to be on '$head_ref', but HEAD is '$current'"
+            failed=1
+          else
+            echo "PASS: runner switched from the merge ref onto '$head_ref'"
+          fi
+
+          if [ "$(git hash-object "$TEST_FILE")" = "$MALFORMED_BLOB" ]; then
+            echo "::error title=Not reformatted::$TEST_FILE is unchanged; --fix did not rewrite it."
+            failed=1
+          else
+            echo "PASS: fixture was reformatted"
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          subject="$(git log -1 --pretty=%s)"
+          if [ "$head_sha" = "$PR_HEAD_SHA" ]; then
+            echo "::error title=No commit::auto-fix produced no commit on the PR branch."
+            failed=1
+          else
+            echo "PASS: auto-fix commit $head_sha"
+            echo "      subject: $subject"
+            echo "      author:  $(git log -1 --pretty='%an <%ae>')"
+          fi
+
+          if [ "$subject" != "$COMMIT_MSG" ]; then
+            echo "::error title=Wrong commit message::expected '$COMMIT_MSG', got '$subject'"
+            failed=1
+          else
+            echo "PASS: commit message matches auto-fix-commit-msg"
+          fi
+
+          fmt="$(command -v "clang-format-${CLANG_VERSION}" || command -v clang-format || true)"
+          if [ -n "$fmt" ]; then
+            if "$fmt" --style=file --dry-run --Werror "$TEST_FILE"; then
+              echo "PASS: committed fixture satisfies .clang-format"
+            else
+              echo "::error title=Still unformatted::the committed fixture still violates .clang-format"
+              failed=1
+            fi
+          else
+            echo "note: clang-format not on PATH here; skipped the re-check"
+          fi
+
+          # The repo's intentionally-unformatted fixtures must be left alone.
+          if ! git diff --quiet "$PR_HEAD_SHA" HEAD -- src/demo.cpp src/demo.hpp; then
+            echo "::error title=Collateral damage::auto-fix also rewrote this repo's intentional demo fixtures."
+            failed=1
+          else
+            echo "PASS: src/demo.cpp and src/demo.hpp were left untouched"
+          fi
+
+          # The fix has to be on the PR branch at the remote, not just locally.
+          git fetch -q origin "$head_ref"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$head_sha" ]; then
+            echo "::error title=Not pushed::the auto-fix commit is not on origin/$head_ref"
+            failed=1
+          else
+            echo "PASS: auto-fix commit is present on origin/$head_ref"
+          fi
+
+          if [ "$failed" -eq 0 ]; then
+            echo "auto-fix PR e2e PASSED"
+          fi
+          exit "$failed"
