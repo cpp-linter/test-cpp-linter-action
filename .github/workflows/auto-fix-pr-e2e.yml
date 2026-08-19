@@ -1,0 +1,314 @@
+name: auto-fix PR e2e
+
+# Phase 2 of the auto-fix end-to-end test: the pull-request path.
+#
+# Phase 1 (auto-fix-e2e.yml) covers the push path, where the action derives the
+# branch from GITHUB_REF. This workflow covers what only a real PR can exercise:
+#
+#   - the "Checkout PR branch for auto-fix push capability" step, which switches
+#     the runner off the PR *merge* ref and onto the PR *head* branch
+#   - the same-repository gating that gets applied to that step
+#   - pushing the fix back onto the PR head branch, so the PR updates itself
+#   - that applying fixes does not disturb what clang-tidy reports
+#
+# As in phase 1, neither cpp-linter-action#443 nor cpp-linter#202 needs to be
+# merged: the action is consumed from its PR branch as a local action, and the
+# cpp-linter version it pins is rewritten in this runner's workspace.
+#
+# Workflows added by a pull request do run for `pull_request` events, so this
+# file takes effect from the PR branch itself.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  # `format-review` on the auto-fix run below needs this.
+  pull-requests: write
+
+env:
+  CPP_LINTER_REF: 'feature/auto-fix'
+  ACTION_DIR: .action-under-test
+  TEST_FILE: src/e2e_autofix_pr_demo.cpp
+  CLANG_VERSION: '18'
+  COMMIT_MSG: 'style: apply clang-format fixes'
+  # Two long-standing checks with stable behaviour across clang releases. The
+  # fixture triggers both, and `-*` keeps the repo's .clang-tidy out of it so
+  # the counts below don't drift when that file changes.
+  TIDY_CHECKS: '-*,readability-magic-numbers,modernize-use-nullptr'
+
+jobs:
+  auto-fix-pr:
+    # Only ever run for the dedicated e2e branch, never for real pull requests.
+    if: startsWith(github.head_ref, 'test/auto-fix-pr-e2e')
+    runs-on: ubuntu-latest
+    steps:
+      # `persist-credentials` stays enabled (the default) so the action can fetch
+      # the head branch and push the fix back to it.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out the action under test
+        uses: actions/checkout@v7
+        with:
+          repository: cpp-linter/cpp-linter-action
+          ref: feature/auto-fix
+          path: .action-under-test
+          persist-credentials: false
+
+      - name: Point the action at the cpp-linter PR branch
+        run: |
+          set -euo pipefail
+          cd "$ACTION_DIR"
+          python3 - "$CPP_LINTER_REF" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          ref = sys.argv[1]
+          spec = f"cpp-linter @ git+https://github.com/cpp-linter/cpp-linter.git@{ref}"
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          patched, count = re.subn(r'"cpp-linter==[^"]+"', f'"{spec}"', text)
+          if count != 1:
+              sys.exit(f"expected exactly 1 cpp-linter pin, patched {count}")
+          path.write_text(patched, encoding="utf-8")
+          print(patched)
+          PY
+          rm -f uv.lock
+
+      - name: Record the pre-fix state
+        run: |
+          set -euo pipefail
+          echo "::group::fixture before"
+          cat -n "$TEST_FILE"
+          echo "::endgroup::"
+          {
+            echo "MALFORMED_BLOB=$(git hash-object "$TEST_FILE")"
+            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+          } >> "$GITHUB_ENV"
+
+      # Baseline: the same lint, with auto-fix off. This measures what
+      # clang-tidy reports against the file as the diff describes it, and is
+      # the reference the auto-fix run below has to reproduce.
+      #
+      # `files-changed-only: true` is deliberate and load-bearing: src/demo.cpp
+      # and src/demo.hpp are intentionally unformatted fixtures of this repo, and
+      # scanning everything would make auto-fix "repair" and commit them too.
+      - name: Lint without auto-fix (baseline)
+        uses: ./.action-under-test
+        id: baseline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: ${{ env.TIDY_CHECKS }}
+          extra-args: '-std=c++17'
+          files-changed-only: true
+          lines-changed-only: true
+          ignore: build|.action-under-test
+          version: '18'
+          verbosity: debug
+          thread-comments: false
+          step-summary: false
+          auto-fix: false
+
+      - name: The baseline must not have touched the fixture
+        run: |
+          set -euo pipefail
+          if [ "$(git hash-object "$TEST_FILE")" != "$MALFORMED_BLOB" ]; then
+            echo "::error title=Baseline mutated the fixture::auto-fix was off, but $TEST_FILE changed."
+            exit 1
+          fi
+          echo "PASS: baseline left the fixture malformed, as expected"
+
+      # The real run. Same inputs, auto-fix on.
+      - name: Run cpp-linter with auto-fix
+        uses: ./.action-under-test
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: ${{ env.TIDY_CHECKS }}
+          extra-args: '-std=c++17'
+          files-changed-only: true
+          lines-changed-only: true
+          ignore: build|.action-under-test
+          version: '18'
+          verbosity: debug
+          thread-comments: false
+          step-summary: false
+          auto-fix: true
+          auto-fix-commit-msg: 'style: apply clang-format fixes'
+          # Only this run asks for a clang-format review, and only this run can
+          # hit the bug it covers: a fixed file has no advice left to report,
+          # but the review pass still walks it and wants a patch to diff
+          # against. Handing it an empty one used to abort cpp-linter with
+          # `AssertionError: FormatAdvice has no suggestions for <file>`, so
+          # this step failing at all is the assertion. Nothing is posted --
+          # the file comes out clean, and `no-lgtm` defaults to true.
+          format-review: true
+          passive-reviews: true
+
+      - name: Verify the PR branch was fixed and updated
+        env:
+          BASE_FORMAT: ${{ steps.baseline.outputs.clang-format-checks-failed }}
+          BASE_TIDY: ${{ steps.baseline.outputs.clang-tidy-checks-failed }}
+          FIX_FORMAT: ${{ steps.linter.outputs.clang-format-checks-failed }}
+          FIX_TIDY: ${{ steps.linter.outputs.clang-tidy-checks-failed }}
+        run: |
+          set -uo pipefail
+          failed=0
+          head_ref='${{ github.event.pull_request.head.ref }}'
+
+          echo "::group::fixture after"
+          cat -n "$TEST_FILE"
+          echo "::endgroup::"
+
+          echo "baseline: clang-format=$BASE_FORMAT clang-tidy=$BASE_TIDY"
+          echo "auto-fix: clang-format=$FIX_FORMAT clang-tidy=$FIX_TIDY"
+
+          # --- which of the two states is this run in? ---
+          # Pushing the fix raises a `synchronize` event, so this workflow runs a
+          # second time against its own auto-fix commit. The fixture is clean by
+          # then and doing nothing is the correct behaviour, so that run asserts
+          # idempotency instead of demanding another fix. The baseline's own
+          # clang-format count says which state we are in, so this stays true
+          # whatever the fixture is later rewritten to contain.
+          if [ "${BASE_FORMAT:-0}" -gt 0 ]; then
+            expect_fix=true
+            echo "PASS: baseline saw $BASE_FORMAT clang-format issue(s)"
+          else
+            expect_fix=false
+            echo "NOTE: the fixture is already formatted, so this is the re-run"
+            echo "      that auto-fix's own push triggered. Asserting that it is"
+            echo "      a no-op rather than expecting another fix."
+          fi
+
+          if [ "${BASE_TIDY:-0}" -le 0 ]; then
+            echo "::error title=No tidy coverage::the baseline found no clang-tidy issues, so the comparison below proves nothing."
+            failed=1
+          else
+            echo "PASS: baseline saw $BASE_TIDY clang-tidy diagnostic(s)"
+          fi
+
+          # --- auto-fix cleared the format issues ---
+          if [ "${FIX_FORMAT:-1}" -ne 0 ]; then
+            echo "::error title=Format issues remain::auto-fix ran but still reports $FIX_FORMAT clang-format issue(s)."
+            failed=1
+          else
+            echo "PASS: auto-fix cleared all clang-format issues"
+          fi
+
+          # --- the point of the tidy coverage ---
+          # clang-format's `-i` rewrites the file. clang-tidy reports line
+          # numbers from the file on disk, but its --line-filter and the review
+          # comments built from its output are keyed to the diff. If the tools
+          # run in the wrong order, diagnostics past a reflowed line drift out
+          # of the filter and silently disappear.
+          if [ "${FIX_TIDY:-0}" -ne "${BASE_TIDY:-0}" ]; then
+            echo "::error title=Tidy diagnostics drifted::auto-fix changed the clang-tidy count from $BASE_TIDY to $FIX_TIDY. Applying format fixes must not affect what clang-tidy reports."
+            failed=1
+          else
+            echo "PASS: clang-tidy still reports $FIX_TIDY diagnostic(s); auto-fix did not shift them"
+          fi
+
+          # --- the pull-request plumbing ---
+          current="$(git rev-parse --abbrev-ref HEAD)"
+          if [ "$current" != "$head_ref" ]; then
+            echo "::error title=Wrong branch::expected to be on '$head_ref', but HEAD is '$current'"
+            failed=1
+          else
+            echo "PASS: runner switched from the merge ref onto '$head_ref'"
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          subject="$(git log -1 --pretty=%s)"
+
+          if [ "$expect_fix" = "true" ]; then
+            if [ "$(git hash-object "$TEST_FILE")" = "$MALFORMED_BLOB" ]; then
+              echo "::error title=Not reformatted::$TEST_FILE is unchanged; --fix did not rewrite it."
+              failed=1
+            else
+              echo "PASS: fixture was reformatted"
+            fi
+
+            if [ "$head_sha" = "$PR_HEAD_SHA" ]; then
+              echo "::error title=No commit::auto-fix produced no commit on the PR branch."
+              failed=1
+            else
+              echo "PASS: auto-fix commit $head_sha"
+              echo "      subject: $subject"
+              echo "      author:  $(git log -1 --pretty='%an <%ae>')"
+            fi
+
+            if [ "$subject" != "$COMMIT_MSG" ]; then
+              echo "::error title=Wrong commit message::expected '$COMMIT_MSG', got '$subject'"
+              failed=1
+            else
+              echo "PASS: commit message matches auto-fix-commit-msg"
+            fi
+
+            # Only the fixture may appear in the auto-fix commit.
+            touched="$(git diff --name-only "$PR_HEAD_SHA" HEAD)"
+            if [ "$touched" != "$TEST_FILE" ]; then
+              echo "::error title=Unexpected files committed::auto-fix committed more than the fixture:"
+              echo "$touched"
+              failed=1
+            else
+              echo "PASS: the auto-fix commit contains only $TEST_FILE"
+            fi
+          else
+            # Idempotency: with nothing left to fix, auto-fix must not rewrite
+            # the file and must not manufacture an empty commit.
+            if [ "$(git hash-object "$TEST_FILE")" != "$MALFORMED_BLOB" ]; then
+              echo "::error title=Needless rewrite::auto-fix modified an already-formatted file."
+              failed=1
+            else
+              echo "PASS: already-clean fixture was left byte-identical"
+            fi
+
+            if [ "$head_sha" != "$PR_HEAD_SHA" ]; then
+              echo "::error title=Empty commit::auto-fix committed $head_sha despite having nothing to fix."
+              failed=1
+            else
+              echo "PASS: no commit was created when there was nothing to fix"
+            fi
+          fi
+
+          fmt="$(command -v "clang-format-${CLANG_VERSION}" || command -v clang-format || true)"
+          if [ -n "$fmt" ]; then
+            if "$fmt" --style=file --dry-run --Werror "$TEST_FILE"; then
+              echo "PASS: committed fixture satisfies .clang-format"
+            else
+              echo "::error title=Still unformatted::the committed fixture still violates .clang-format"
+              failed=1
+            fi
+          else
+            echo "note: clang-format not on PATH here; skipped the re-check"
+          fi
+
+          # The repo's intentionally-unformatted fixtures must be left alone.
+          if ! git diff --quiet "$PR_HEAD_SHA" HEAD -- src/demo.cpp src/demo.hpp; then
+            echo "::error title=Collateral damage::auto-fix also rewrote this repo's intentional demo fixtures."
+            failed=1
+          else
+            echo "PASS: src/demo.cpp and src/demo.hpp were left untouched"
+          fi
+
+          # The fix has to be on the PR branch at the remote, not just locally.
+          git fetch -q origin "$head_ref"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$head_sha" ]; then
+            echo "::error title=Not pushed::the auto-fix commit is not on origin/$head_ref"
+            failed=1
+          else
+            echo "PASS: auto-fix commit is present on origin/$head_ref"
+          fi
+
+          if [ "$failed" -eq 0 ]; then
+            echo "auto-fix PR e2e PASSED"
+          fi
+          exit "$failed"
