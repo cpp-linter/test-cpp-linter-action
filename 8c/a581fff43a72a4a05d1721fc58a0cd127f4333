@@ -1,0 +1,21 @@
+src/e2e_autofix_pr_demo.cpp
+  s_3763234cc4c94a::t_0ded1f20618943 1-12
+.github/workflows/auto-fix-pr-e2e.yml
+  s_3763234cc4c94a::t_75ae283c328da0 12,34-37,84,91-94,98-125,133-134,136,140-141,146-150,157,160-199,233-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8ca581fff43a72a4a05d1721fc58a0cd127f4333",
+  "prompts": {},
+  "sessions": {
+    "s_3763234cc4c94a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "253280e6-71e2-433d-a3a4-21e7534da9c2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
