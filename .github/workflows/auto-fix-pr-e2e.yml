@@ -24,6 +24,8 @@ on:
 
 permissions:
   contents: write
+  # `format-review` on the auto-fix run below needs this.
+  pull-requests: write
 
 env:
   CPP_LINTER_REF: 'feature/auto-fix'
@@ -141,6 +143,15 @@ jobs:
           step-summary: false
           auto-fix: true
           auto-fix-commit-msg: 'style: apply clang-format fixes'
+          # Only this run asks for a clang-format review, and only this run can
+          # hit the bug it covers: a fixed file has no advice left to report,
+          # but the review pass still walks it and wants a patch to diff
+          # against. Handing it an empty one used to abort cpp-linter with
+          # `AssertionError: FormatAdvice has no suggestions for <file>`, so
+          # this step failing at all is the assertion. Nothing is posted --
+          # the file comes out clean, and `no-lgtm` defaults to true.
+          format-review: true
+          passive-reviews: true
 
       - name: Verify the PR branch was fixed and updated
         env:
