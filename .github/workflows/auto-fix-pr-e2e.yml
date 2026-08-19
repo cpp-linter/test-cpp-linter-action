@@ -160,12 +160,21 @@ jobs:
           echo "baseline: clang-format=$BASE_FORMAT clang-tidy=$BASE_TIDY"
           echo "auto-fix: clang-format=$FIX_FORMAT clang-tidy=$FIX_TIDY"
 
-          # --- sanity: the fixture has to actually exercise both tools ---
-          if [ "${BASE_FORMAT:-0}" -le 0 ]; then
-            echo "::error title=Fixture not malformed::the baseline found no clang-format issues, so this run proves nothing."
-            failed=1
-          else
+          # --- which of the two states is this run in? ---
+          # Pushing the fix raises a `synchronize` event, so this workflow runs a
+          # second time against its own auto-fix commit. The fixture is clean by
+          # then and doing nothing is the correct behaviour, so that run asserts
+          # idempotency instead of demanding another fix. The baseline's own
+          # clang-format count says which state we are in, so this stays true
+          # whatever the fixture is later rewritten to contain.
+          if [ "${BASE_FORMAT:-0}" -gt 0 ]; then
+            expect_fix=true
             echo "PASS: baseline saw $BASE_FORMAT clang-format issue(s)"
+          else
+            expect_fix=false
+            echo "NOTE: the fixture is already formatted, so this is the re-run"
+            echo "      that auto-fix's own push triggered. Asserting that it is"
+            echo "      a no-op rather than expecting another fix."
           fi
 
           if [ "${BASE_TIDY:-0}" -le 0 ]; then
@@ -205,39 +214,58 @@ jobs:
             echo "PASS: runner switched from the merge ref onto '$head_ref'"
           fi
 
-          if [ "$(git hash-object "$TEST_FILE")" = "$MALFORMED_BLOB" ]; then
-            echo "::error title=Not reformatted::$TEST_FILE is unchanged; --fix did not rewrite it."
-            failed=1
-          else
-            echo "PASS: fixture was reformatted"
-          fi
-
           head_sha="$(git rev-parse HEAD)"
           subject="$(git log -1 --pretty=%s)"
-          if [ "$head_sha" = "$PR_HEAD_SHA" ]; then
-            echo "::error title=No commit::auto-fix produced no commit on the PR branch."
-            failed=1
-          else
-            echo "PASS: auto-fix commit $head_sha"
-            echo "      subject: $subject"
-            echo "      author:  $(git log -1 --pretty='%an <%ae>')"
-          fi
 
-          if [ "$subject" != "$COMMIT_MSG" ]; then
-            echo "::error title=Wrong commit message::expected '$COMMIT_MSG', got '$subject'"
-            failed=1
-          else
-            echo "PASS: commit message matches auto-fix-commit-msg"
-          fi
+          if [ "$expect_fix" = "true" ]; then
+            if [ "$(git hash-object "$TEST_FILE")" = "$MALFORMED_BLOB" ]; then
+              echo "::error title=Not reformatted::$TEST_FILE is unchanged; --fix did not rewrite it."
+              failed=1
+            else
+              echo "PASS: fixture was reformatted"
+            fi
 
-          # Only the fixture may appear in the auto-fix commit.
-          touched="$(git diff --name-only "$PR_HEAD_SHA" HEAD)"
-          if [ "$touched" != "$TEST_FILE" ]; then
-            echo "::error title=Unexpected files committed::auto-fix committed more than the fixture:"
-            echo "$touched"
-            failed=1
+            if [ "$head_sha" = "$PR_HEAD_SHA" ]; then
+              echo "::error title=No commit::auto-fix produced no commit on the PR branch."
+              failed=1
+            else
+              echo "PASS: auto-fix commit $head_sha"
+              echo "      subject: $subject"
+              echo "      author:  $(git log -1 --pretty='%an <%ae>')"
+            fi
+
+            if [ "$subject" != "$COMMIT_MSG" ]; then
+              echo "::error title=Wrong commit message::expected '$COMMIT_MSG', got '$subject'"
+              failed=1
+            else
+              echo "PASS: commit message matches auto-fix-commit-msg"
+            fi
+
+            # Only the fixture may appear in the auto-fix commit.
+            touched="$(git diff --name-only "$PR_HEAD_SHA" HEAD)"
+            if [ "$touched" != "$TEST_FILE" ]; then
+              echo "::error title=Unexpected files committed::auto-fix committed more than the fixture:"
+              echo "$touched"
+              failed=1
+            else
+              echo "PASS: the auto-fix commit contains only $TEST_FILE"
+            fi
           else
-            echo "PASS: the auto-fix commit contains only $TEST_FILE"
+            # Idempotency: with nothing left to fix, auto-fix must not rewrite
+            # the file and must not manufacture an empty commit.
+            if [ "$(git hash-object "$TEST_FILE")" != "$MALFORMED_BLOB" ]; then
+              echo "::error title=Needless rewrite::auto-fix modified an already-formatted file."
+              failed=1
+            else
+              echo "PASS: already-clean fixture was left byte-identical"
+            fi
+
+            if [ "$head_sha" != "$PR_HEAD_SHA" ]; then
+              echo "::error title=Empty commit::auto-fix committed $head_sha despite having nothing to fix."
+              failed=1
+            else
+              echo "PASS: no commit was created when there was nothing to fix"
+            fi
           fi
 
           fmt="$(command -v "clang-format-${CLANG_VERSION}" || command -v clang-format || true)"
