@@ -100,7 +100,7 @@ jobs:
 
       # The real run. Same inputs, auto-fix on.
       - name: Run cpp-linter with auto-fix
-        uses: ./.action-under-test
+        uses: $/cpp-linter-action
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
