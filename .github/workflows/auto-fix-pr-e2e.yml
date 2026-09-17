@@ -46,17 +46,8 @@ jobs:
       # the head branch and push the fix back to it.
       - uses: actions/checkout@v7
         with:
-          # auto-fix commits on the PR head; checkout's default is the merge ref
-          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: true
           fetch-depth: 0
-
-      - name: Check out the action under test
-        uses: actions/checkout@v7
-        with:
-          repository: cpp-linter/cpp-linter-action
-          ref: feature/auto-fix
-          path: .action-under-test
-          persist-credentials: false
 
       - name: Record the pre-fix state
         run: |
