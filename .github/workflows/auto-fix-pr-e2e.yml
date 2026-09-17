@@ -81,7 +81,7 @@ jobs:
       # and src/demo.hpp are intentionally unformatted fixtures of this repo, and
       # scanning everything would make auto-fix "repair" and commit them too.
       - name: Lint without auto-fix (baseline)
-        uses: ./.action-under-test
+        uses: $/cpp-linter-action
         id: baseline
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
