@@ -5,14 +5,13 @@ name: auto-fix PR e2e
 # Phase 1 (auto-fix-e2e.yml) covers the push path, where the action derives the
 # branch from GITHUB_REF. This workflow covers what only a real PR can exercise:
 #
-#   - checking out the PR *head* commit (checkout's default is the merge ref)
-#     and the action's check that this was done before it commits
+#   - the default pull_request checkout (the merge ref), which is what users get
 #   - the same-repository gating of the commit step
 #   - pushing the fix back onto the PR head branch, so the PR updates itself
 #   - that applying fixes does not disturb what clang-tidy reports
 #
-# The action is consumed from its PR branch as a local action; it pins the
-# released cpp-linter that ships `--fix`.
+# The action under test is the ./cpp-linter-action submodule, pinned on this
+# branch to the head of cpp-linter-action's feature/auto-fix.
 #
 # Workflows added by a pull request do run for `pull_request` events, so this
 # file takes effect from the PR branch itself.
@@ -27,7 +26,6 @@ permissions:
   pull-requests: write
 
 env:
-  ACTION_DIR: .action-under-test
   TEST_FILE: src/e2e_autofix_pr_demo.cpp
   CLANG_VERSION: '18'
   COMMIT_MSG: 'style: apply clang-format fixes'
@@ -59,10 +57,6 @@ jobs:
             echo "MALFORMED_BLOB=$(git hash-object "$TEST_FILE")"
             echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
           } >> "$GITHUB_ENV"
-          if [ "$(git rev-parse HEAD)" != "${{ github.event.pull_request.head.sha }}" ]; then
-            echo "::error title=Wrong checkout::HEAD is not the PR head commit; the ref input on actions/checkout is missing."
-            exit 1
-          fi
 
       # Baseline: the same lint, with auto-fix off. This measures what
       # clang-tidy reports against the file as the diff describes it, and is
@@ -72,7 +66,7 @@ jobs:
       # and src/demo.hpp are intentionally unformatted fixtures of this repo, and
       # scanning everything would make auto-fix "repair" and commit them too.
       - name: Lint without auto-fix (baseline)
-        uses: $/cpp-linter-action
+        uses: ./cpp-linter-action
         id: baseline
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,7 +76,7 @@ jobs:
           extra-args: '-std=c++17'
           files-changed-only: true
           lines-changed-only: true
-          ignore: build|.action-under-test
+          ignore: build
           version: '18'
           verbosity: debug
           thread-comments: false
@@ -100,7 +94,7 @@ jobs:
 
       # The real run. Same inputs, auto-fix on.
       - name: Run cpp-linter with auto-fix
-        uses: $/cpp-linter-action
+        uses: ./cpp-linter-action
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,7 +104,7 @@ jobs:
           extra-args: '-std=c++17'
           files-changed-only: true
           lines-changed-only: true
-          ignore: build|.action-under-test
+          ignore: build
           version: '18'
           verbosity: debug
           thread-comments: false
