@@ -1,0 +1,16 @@
+.github/workflows/auto-fix-pr-e2e.yml
+  h_20d8fd5fdd9091 8,13-14,69,79,97,107
+cpp-linter-action
+  h_20d8fd5fdd9091 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dcd136270563283f4741b344da8342b4e7f698fe",
+  "prompts": {},
+  "humans": {
+    "h_20d8fd5fdd9091": {
+      "author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
