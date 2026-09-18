@@ -1,0 +1,24 @@
+.github/workflows/auto-fix-pr-e2e.yml
+  s_0da9b18608c2a0::t_97497a8308a025 56-62,269-275
+  s_0da9b18608c2a0::t_fce55394663a70 276
+src/e2e_autofix_pr_demo.cpp
+  s_0da9b18608c2a0::t_97497a8308a025 8,10,12
+cpp-linter-action
+  s_0da9b18608c2a0::t_a14d026ed4f83b 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "36b8e60b6d9d7530d9efec8e67e3b601101eda16",
+  "prompts": {},
+  "sessions": {
+    "s_0da9b18608c2a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1ae0c79-9ddb-4e6b-a8e1-2213cfd3c2b6",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
