@@ -53,6 +53,13 @@ jobs:
           echo "::group::fixture before"
           cat -n "$TEST_FILE"
           echo "::endgroup::"
+          # This run has to start from the default checkout (the merge commit),
+          # otherwise it would not cover the action's own checkout of the PR head.
+          echo "HEAD=$(git rev-parse HEAD) PR head=${{ github.event.pull_request.head.sha }}"
+          if [ "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}" ]; then
+            echo "::error title=Not the default checkout::HEAD is already the PR head."
+            exit 1
+          fi
           {
             echo "MALFORMED_BLOB=$(git hash-object "$TEST_FILE")"
             echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
@@ -257,6 +264,14 @@ jobs:
             failed=1
           else
             echo "PASS: src/demo.cpp and src/demo.hpp were left untouched"
+          fi
+
+          # The checkout above is a full clone; the action must leave it that way.
+          if [ "$(git rev-parse --is-shallow-repository)" != "false" ]; then
+            echo "::error title=History truncated::the action turned the full clone into a shallow one."
+            failed=1
+          else
+            echo "PASS: the full clone was left intact"
           fi
 
           # The fix has to be on the PR branch at the remote, not just locally.
