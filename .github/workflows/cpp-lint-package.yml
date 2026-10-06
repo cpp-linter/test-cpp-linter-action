@@ -5,8 +5,9 @@ on:
     inputs:
       branch:
         description: 'which branch to test'
-        default: 'main'
+        default: 'hide-reuse-pr-reviews'
         required: true
+  pull_request:
 
 jobs:
   pre-seed-versions:
@@ -43,7 +44,8 @@ jobs:
       matrix:
         clang-version: ${{ fromJSON(needs.pre-seed-versions.outputs.versions) }}
         repo: ['cpp-linter/cpp-linter']
-        branch: ['${{ inputs.branch }}']
+        branch:
+          - ${{ github.event_name == 'workflow_dispatch' && inputs.branch || 'hide-reuse-pr-reviews' }}
       fail-fast: false
 
     steps:
@@ -98,6 +100,8 @@ jobs:
           --extra-arg="-std=c++14 -Wall"
           --thread-comments=${{ matrix.clang-version == '17' && 'update' }}
           -a=${{ matrix.clang-version == '17' }}
+          --tidy-review=${{ matrix.clang-version == '17' }}
+          --format-review=${{ matrix.clang-version == '17' }}
 
       - name: Fail fast?!
         if: steps.linter.outputs.checks-failed > 0
