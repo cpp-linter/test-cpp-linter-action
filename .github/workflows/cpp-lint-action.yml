@@ -6,11 +6,38 @@ on:
 
 
 jobs:
+  pre-seed-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.extract-version-range.outputs.versions }}
+    steps:
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          gh release download
+          -R cpp-linter/clang-tools-static-binaries
+          --pattern versions.json
+          --output versions.json
+      - name: Extract version range
+        id: extract-version-range
+        shell: python
+        run: |-
+          import json
+          from os import environ
+          from pathlib import Path
+          content = Path("versions.json").read_text(encoding="utf-8")
+          metadata = json.loads(content)
+          versions = list(metadata["llvm_versions"].keys())
+          versions.sort()
+          with open(environ["GITHUB_OUTPUT"], mode="a") as gh_out:
+              gh_out.write(f"versions={json.dumps(versions)}\n")
+
   test:
+    needs: pre-seed-versions
     strategy:
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        clang-version: ['11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22']
+        clang-version: ${{ fromJSON(needs.pre-seed-versions.outputs.versions) }}
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
