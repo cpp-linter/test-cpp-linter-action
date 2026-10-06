@@ -61,7 +61,11 @@ jobs:
         run: python -m pip install clang-tools git+https://github.com/${{ matrix.repo }}/@${{ matrix.branch }}
 
       - name: Install clang-tools
-        run: clang-tools --install ${{ matrix.clang-version }} --directory ${{ runner.temp }}/llvm
+        run: >-
+          clang-tools install
+          clang-format clang-tidy
+          --version ${{ matrix.clang-version }}
+          --directory ${{ runner.temp }}/llvm
 
       - name: Setup VS dev env
         uses: TheMrMilchmann/setup-msvc-dev@v4
