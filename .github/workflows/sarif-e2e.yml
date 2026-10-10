@@ -1,0 +1,76 @@
+# Temporary end-to-end test for cpp-linter/cpp-linter-rs#479 (SARIF output).
+name: SARIF e2e test
+
+on:
+  push:
+    branches: [claude/project-thread-o8ltjp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sarif:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install cpp-linter from the PR branch
+        run: >-
+          cargo install --locked
+          --git https://github.com/cpp-linter/cpp-linter-rs
+          --branch claude/project-thread-o8ltjp
+          --features bin cpp-linter
+
+      - name: Generate compilation database
+        run: mkdir build && cmake -Bbuild src
+
+      - name: Run cpp-linter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          cpp-linter
+          --style=file
+          --files-changed-only=false
+          --lines-changed-only=false
+          --ignore="build|cpp-linter-action"
+          --database=build
+          --thread-comments=false
+          --sarif-file=out/clang-tidy.sarif
+
+      - name: Show SARIF log
+        run: cat out/clang-tidy.sarif
+
+      - name: Validate against the SARIF 2.1.0 schema
+        run: |
+          pip install jsonschema
+          curl -sSL https://json.schemastore.org/sarif-2.1.0.json -o sarif-schema.json
+          python3 - <<'PY'
+          import json, jsonschema
+          schema = json.load(open("sarif-schema.json"))
+          log = json.load(open("out/clang-tidy.sarif"))
+          jsonschema.Draft7Validator(schema).validate(log)
+          print("valid SARIF 2.1.0 with", len(log["runs"][0]["results"]), "results")
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: clang-tidy-sarif
+          path: out/clang-tidy.sarif
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: out/clang-tidy.sarif
+          category: clang-tidy
+
+      - name: List code scanning alerts for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api
+          "repos/${{ github.repository }}/code-scanning/alerts?ref=${{ github.ref }}&per_page=100"
+          --jq '.[] | "\(.number) \(.rule.id) \(.rule.severity) \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line):\(.most_recent_instance.location.start_column) | \(.most_recent_instance.message.text) | help: \(.rule.help_uri // "none")"'
