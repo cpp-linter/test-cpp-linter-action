@@ -15,3 +15,10 @@ int main()
 
     return 0;
 }
+
+// added to test cpp-linter-action#501 (temporary)
+int  addNumbers( int a,int b ){
+    int* unused = NULL;
+  if(a>b) return a+b;
+    return b+a ;
+}
