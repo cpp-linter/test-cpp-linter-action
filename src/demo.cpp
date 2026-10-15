@@ -26,4 +26,4 @@ int addNumbers(int a, int b)
 }
 
 // second round (temporary)
-int  subtract( int x,int y ){ return x-y ; }
+int subtract(int x, int y) { return x - y; }
