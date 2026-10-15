@@ -1,0 +1,110 @@
+# Temporary: end-to-end check of cpp-linter/cpp-linter-action#501
+# (cpp-linter 1.14.1 -> 1.15.0). Remove after the test.
+name: test action#501
+
+on:
+  push:
+    branches: [claude/project-thread-c0ojvi]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  candidate:
+    name: "#501 ${{ matrix.os }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate compilation database
+        run: cmake -Bbuild src
+      - name: Run cpp-linter-action at #501 head
+        uses: cpp-linter/cpp-linter-action@73198305cd5302ac662f2c2d8643fc1b1d7faa91
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          version: '20'
+          ignore: build
+          database: build
+          verbosity: debug
+          extra-args: -std=c++14 -Wall
+          files-changed-only: ${{ github.event_name == 'pull_request' }}
+          step-summary: true
+          file-annotations: true
+          thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
+          tidy-review: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' }}
+          format-review: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' }}
+      - name: Outputs
+        shell: bash
+        run: |
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
+
+  baseline:
+    name: "main ${{ matrix.os }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate compilation database
+        run: cmake -Bbuild src
+      - name: Run cpp-linter-action at main (cpp-linter 1.14.1)
+        uses: cpp-linter/cpp-linter-action@67c436ebf4900ba3f8240bc69c7d7740d99d293e
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          version: '20'
+          ignore: build
+          database: build
+          verbosity: debug
+          extra-args: -std=c++14 -Wall
+          files-changed-only: ${{ github.event_name == 'pull_request' }}
+          step-summary: true
+          file-annotations: false
+          thread-comments: false
+      - name: Outputs
+        shell: bash
+        run: |
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
+
+  auto-fix:
+    name: "#501 auto-fix"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Run cpp-linter-action at #501 head with auto-fix
+        uses: cpp-linter/cpp-linter-action@73198305cd5302ac662f2c2d8643fc1b1d7faa91
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          version: '20'
+          tidy-checks: '-*'
+          files-changed-only: true
+          thread-comments: false
+          step-summary: true
+          auto-fix: true
