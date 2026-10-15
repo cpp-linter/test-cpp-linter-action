@@ -24,3 +24,6 @@ int addNumbers(int a, int b)
         return a + b;
     return b + a;
 }
+
+// second round (temporary)
+int  subtract( int x,int y ){ return x-y ; }

@@ -90,6 +90,8 @@ jobs:
   auto-fix:
     name: "#501 auto-fix"
     if: github.event_name == 'pull_request'
+    # run after the review job so the pushed fix does not change the PR diff mid-review
+    needs: candidate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
