@@ -35,6 +35,7 @@ jobs:
           database: build
           verbosity: debug
           extra-args: -std=c++14 -Wall
+          files-changed-only: false
           step-summary: true
           file-annotations: true
           thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
@@ -70,6 +71,7 @@ jobs:
           database: build
           verbosity: debug
           extra-args: -std=c++14 -Wall
+          files-changed-only: false
           step-summary: true
           file-annotations: false
           thread-comments: false
