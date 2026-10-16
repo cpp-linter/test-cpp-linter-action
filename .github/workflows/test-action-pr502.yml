@@ -1,0 +1,81 @@
+# Temporary: end-to-end check of cpp-linter/cpp-linter-action#502
+# (dev-only bump of ruff 0.16.10 -> 0.17.0). Remove after the test.
+name: test action#502
+
+on:
+  push:
+    branches: [claude/project-thread-7esk00]
+
+permissions:
+  contents: write
+
+jobs:
+  candidate:
+    name: "#502 ${{ matrix.os }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate compilation database
+        run: cmake -Bbuild src
+      - name: Run cpp-linter-action at #502
+        uses: cpp-linter/cpp-linter-action@ddc37ffdb45bc976be36291712677ffe75759347
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          version: '20'
+          ignore: build
+          database: build
+          verbosity: debug
+          extra-args: -std=c++14 -Wall
+          step-summary: true
+          file-annotations: true
+          thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
+      - name: Outputs
+        shell: bash
+        run: |
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
+
+  baseline:
+    name: "main ${{ matrix.os }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate compilation database
+        run: cmake -Bbuild src
+      - name: Run cpp-linter-action at main
+        uses: cpp-linter/cpp-linter-action@f71829c43db202723ff7ae8aeb2ca1f5c19651d0
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          version: '20'
+          ignore: build
+          database: build
+          verbosity: debug
+          extra-args: -std=c++14 -Wall
+          step-summary: true
+          file-annotations: false
+          thread-comments: false
+      - name: Outputs
+        shell: bash
+        run: |
+          echo "total: ${{ steps.linter.outputs.checks-failed }}"
+          echo "clang-format: ${{ steps.linter.outputs.clang-format-checks-failed }}"
+          echo "clang-tidy: ${{ steps.linter.outputs.clang-tidy-checks-failed }}"
