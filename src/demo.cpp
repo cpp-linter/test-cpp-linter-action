@@ -27,3 +27,6 @@ int addNumbers(int a, int b)
 
 // second round (temporary)
 int subtract(int x, int y) { return x - y; }
+
+// round 2: badly formatted on purpose (temporary)
+int   multiply( int x,int y ){return x*y;}

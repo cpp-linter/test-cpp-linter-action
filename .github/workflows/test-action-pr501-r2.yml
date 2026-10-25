@@ -3,8 +3,7 @@
 name: test action#501 (1.15.1 + clang-tools 2.0.0)
 
 on:
-  push:
-    branches: [claude/project-thread-nfsfml]
+  # round 2: pull_request only (the push matrix already ran on 2a0076d)
   pull_request:
     branches: [master]
 
