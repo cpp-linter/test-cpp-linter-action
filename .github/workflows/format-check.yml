@@ -1,0 +1,30 @@
+name: format check (sub-action e2e)
+
+on:
+  push:
+    branches: [claude/project-thread-np880h]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      # Expected: fails, with one annotation on src/demo.hpp line 44 only.
+      # The old mis-formatted lines in src/demo.hpp are not part of the change.
+      - uses: cpp-linter/cpp-linter-action/format@claude/project-thread-np880h
+        id: fmt
+        continue-on-error: true
+      - name: Assert
+        shell: bash
+        run: |
+          echo "outcome=${{ steps.fmt.outcome }} checks-failed=${{ steps.fmt.outputs.checks-failed }} version=${{ steps.fmt.outputs.clang-format-version }}"
+          [ "${{ steps.fmt.outcome }}" = failure ] && [ "${{ steps.fmt.outputs.checks-failed }}" = 1 ]

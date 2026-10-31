@@ -39,3 +39,6 @@ struct LongDiff
     long diff;
 
 };
+
+int formattedDecl(int a);
+int   badly_spaced( int a );
