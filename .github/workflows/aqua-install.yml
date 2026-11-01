@@ -1,0 +1,79 @@
+name: aqua install of cpp-linter clang-format/clang-tidy
+
+on:
+  push:
+    branches: [claude/project-thread-3y9j3l]
+    paths: [aqua-test/registry.yaml, aqua-test/tidy.cpp, .github/workflows/aqua-install.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, version: llvm-23.1.4 }
+          - { os: ubuntu-latest, version: llvm-22.1.8-3 }
+          - { os: ubuntu-latest, version: llvm-12.0.1-2 }
+          - { os: ubuntu-24.04-arm, version: llvm-23.1.4 }
+          - { os: macos-latest, version: llvm-23.1.4 }
+          - { os: macos-15-intel, version: llvm-21.1.8 }
+          - { os: windows-latest, version: llvm-23.1.4 }
+          - { os: windows-11-arm, version: llvm-23.1.4 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      AQUA_GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Write aqua.yaml using the local registry
+        run: |
+          cat > aqua.yaml <<EOT
+          checksum:
+            enabled: true
+            require_checksum: true
+          registries:
+            - name: local
+              type: local
+              path: aqua-test/registry.yaml
+          packages:
+            - name: cpp-linter/clang-tools-static-binaries/clang-format@${{ matrix.version }}
+              registry: local
+            - name: cpp-linter/clang-tools-static-binaries/clang-tidy@${{ matrix.version }}
+              registry: local
+          EOT
+          cat aqua.yaml
+      - uses: aquaproj/aqua-installer@611554c6f0137ba41c8dd15aca8bee82504ea461 # v4.1.1
+        with:
+          aqua_version: v2.65.2
+      - name: aqua update-checksum and install
+        run: |
+          aqua update-checksum
+          cat aqua-checksums.json
+          aqua i
+      - name: clang-format
+        run: |
+          clang-format --version | tee -a "$GITHUB_STEP_SUMMARY"
+          if clang-format --dry-run -Werror src/demo.cpp; then
+            echo "expected formatting errors"; exit 1
+          fi
+      - name: clang-tidy
+        run: |
+          clang-tidy --version | tee -a "$GITHUB_STEP_SUMMARY"
+          set +e
+          clang-tidy aqua-test/tidy.cpp --checks='-*,readability-*' -- -std=c++17 > tidy.txt 2>&1
+          code=$?
+          set -e
+          cat tidy.txt
+          if grep -q "file not found" tidy.txt; then
+            echo "${{ matrix.os }} ${{ matrix.version }}: clang-tidy exit $code, header NOT found: $(grep -m1 'file not found' tidy.txt)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "${{ matrix.os }} ${{ matrix.version }}: clang-tidy exit $code, headers OK" >> "$GITHUB_STEP_SUMMARY"
+          fi

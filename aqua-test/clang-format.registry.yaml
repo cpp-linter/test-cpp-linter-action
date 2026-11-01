@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/aquaproj/aqua/main/json-schema/registry.json
+packages:
+  - name: cpp-linter/clang-tools-static-binaries/clang-format
+    type: github_release
+    repo_owner: cpp-linter
+    repo_name: clang-tools-static-binaries
+    description: Static builds of clang-format, the LLVM formatter for C, C++ and more
+    version_prefix: llvm-
+    version_constraint: "false"
+    version_overrides:
+      - version_constraint: "true"
+        asset: clang-format-{{(semver .SemVer).Major}}_{{.OS}}-{{.Arch}}
+        format: raw
+        replacements:
+          darwin: macos
+        checksum:
+          type: github_release
+          asset: SHA512SUMS
+          algorithm: sha512
