@@ -16,4 +16,4 @@ int main()
     return 0;
 }
 
-int  addedForV3Test(int x){return x*2;}
+static auto addedForV3Test(int x) -> int { return x * 2; }
