@@ -2,10 +2,12 @@ version: 0.1
 # Static, single-file clang-format binaries from
 # https://github.com/cpp-linter/clang-tools-static-binaries (one release per LLVM
 # version, SHA512SUMS and GitHub build attestations; Linux, macOS, Windows on x86_64/arm64).
+# Variant D: group-level `executable: true` while the old trunk.io tarballs stay (test whether tarballs still extract).
 # Published versions: https://cpp-linter.github.io/clang-tools-static-binaries/
 downloads:
   - name: clang-format
     version: 21.1.8
+    executable: true
     args:
       major: ${version}=>(?P<major>\d+)\..*
     downloads:
@@ -25,14 +27,12 @@ downloads:
         cpu:
           x86_64: amd64
           arm_64: arm64
-        executable: true
         url: https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-${version}/clang-format-${major}_${os}-${cpu}
       - os:
           windows: windows
         cpu:
           x86_64: amd64
           arm_64: arm64
-        executable: true
         url: https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-${version}/clang-format-${major}_${os}-${cpu}.exe
 tools:
   definitions:

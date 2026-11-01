@@ -1,0 +1,66 @@
+version: 0.1
+# Static, single-file clang-format binaries from
+# https://github.com/cpp-linter/clang-tools-static-binaries (one release per LLVM
+# version, SHA512SUMS and GitHub build attestations; Linux, macOS, Windows on x86_64/arm64).
+# Variant C: no `executable` key at all (test whether Trunk marks raw files executable).
+# Published versions: https://cpp-linter.github.io/clang-tools-static-binaries/
+downloads:
+  - name: clang-format
+    version: 21.1.8
+    args:
+      major: ${version}=>(?P<major>\d+)\..*
+    downloads:
+      # Versions only hosted on the trunk.io CDN (tarballs with bin/clang-format).
+      - os:
+          linux: linux
+          macos: macos
+        cpu:
+          x86_64: x86_64
+          arm_64: arm64
+        url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
+        version: 14.0.1 || 17.0.1
+      # Everything else: single static executables from cpp-linter.
+      - os:
+          linux: linux
+          macos: macos
+        cpu:
+          x86_64: amd64
+          arm_64: arm64
+        url: https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-${version}/clang-format-${major}_${os}-${cpu}
+      - os:
+          windows: windows
+        cpu:
+          x86_64: amd64
+          arm_64: arm64
+        url: https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-${version}/clang-format-${major}_${os}-${cpu}.exe
+tools:
+  definitions:
+    - name: clang-format
+      download: clang-format
+      shims: [clang-format]
+      known_good_version: 16.0.3
+      environment:
+        - name: PATH
+          list: ["${tool}", "${tool}/bin"]
+lint:
+  definitions:
+    - name: clang-format
+      supported_platforms: [linux, macos, windows]
+      description: Formatter for C/C++ and Protobuf
+      files: [c/c++, cuda, proto]
+      commands:
+        - name: format
+          output: rewrite
+          run: clang-format -i ${target}
+          success_codes: [0, 1]
+          batch: true
+          in_place: true
+          cache_results: true
+          formatter: true
+      tools: [clang-format]
+      suggest_if: config_present
+      direct_configs: [.clang-format]
+      known_good_version: 21.1.8
+      version_command:
+        parse_regex: ${semver}
+        run: clang-format --version
