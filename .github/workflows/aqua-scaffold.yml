@@ -1,0 +1,57 @@
+name: aqua-registry scaffold for cpp-linter binaries
+
+on:
+  push:
+    branches: [claude/project-thread-3y9j3l]
+    paths: [aqua-test/*.scaffold.yaml, .github/workflows/aqua-scaffold.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold:
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [clang-format, clang-tidy]
+    runs-on: ubuntu-latest
+    env:
+      AQUA_GITHUB_TOKEN: ${{ github.token }}
+      PKG: cpp-linter/clang-tools-static-binaries/${{ matrix.tool }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: aquaproj/aqua-installer@611554c6f0137ba41c8dd15aca8bee82504ea461 # v4.1.1
+        with:
+          aqua_version: v2.65.2
+      - name: Clone aqua-registry and install its dev tools
+        run: |
+          git clone --depth 50 https://github.com/aquaproj/aqua-registry "$RUNNER_TEMP/ar"
+          cd "$RUNNER_TEMP/ar"
+          git config user.name "Xianpeng Shen"
+          git config user.email "3353385+shenxianpeng@users.noreply.github.com"
+          aqua i -l
+          command -v argd
+      - name: argd s
+        run: |
+          cd "$RUNNER_TEMP/ar"
+          argd s -c "$GITHUB_WORKSPACE/aqua-test/${{ matrix.tool }}.scaffold.yaml" "$PKG" 2>&1 | tee "$RUNNER_TEMP/argd.log" | tail -150
+      - name: Show generated files
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/ar"
+          git log --oneline -3 || true
+          git status --short | head -20 || true
+          for f in registry.yaml pkg.yaml scaffold.yaml; do
+            echo "===== $f"; cat "pkgs/$PKG/$f" 2>/dev/null || true
+          done
+          mkdir -p "$RUNNER_TEMP/out"
+          cp -r "pkgs/$PKG" "$RUNNER_TEMP/out/" 2>/dev/null || true
+          cp "$RUNNER_TEMP/argd.log" "$RUNNER_TEMP/out/" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: scaffold-${{ matrix.tool }}
+          path: ${{ runner.temp }}/out
