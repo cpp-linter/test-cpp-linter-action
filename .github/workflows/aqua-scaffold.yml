@@ -3,7 +3,7 @@ name: aqua-registry scaffold for cpp-linter binaries
 on:
   push:
     branches: [claude/project-thread-3y9j3l]
-    paths: [aqua-test/*.scaffold.yaml, .github/workflows/aqua-scaffold.yml]
+    paths: [aqua-test/*.scaffold.yaml, aqua-test/clang-format.registry.yaml, .github/workflows/aqua-scaffold.yml]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tool: [clang-format, clang-tidy]
+        tool: [clang-format]
     runs-on: ubuntu-latest
     env:
       AQUA_GITHUB_TOKEN: ${{ github.token }}
@@ -40,18 +40,28 @@ jobs:
           set -o pipefail
           cd "$RUNNER_TEMP/ar"
           argd s -c "$GITHUB_WORKSPACE/aqua-test/${{ matrix.tool }}.scaffold.yaml" "$PKG" 2>&1 | tee "$RUNNER_TEMP/argd.log" | tail -150
-      - name: Show generated files
+      - name: Manual changes on top of the scaffold, then argd gr and argd t
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP/ar"
+          cp "$GITHUB_WORKSPACE/aqua-test/${{ matrix.tool }}.registry.yaml" "pkgs/$PKG/registry.yaml"
+          argd gr
+          git add registry.yaml "pkgs/$PKG"
+          git commit -q -m "fix($PKG): pick the asset by the LLVM major version and describe the tool"
+          argd t "$PKG" 2>&1 | tee "$RUNNER_TEMP/argd-test.log" | tail -60
+      - name: Show result and export patches
         if: always()
         run: |
           cd "$RUNNER_TEMP/ar"
-          git log --oneline -3 || true
-          git status --short | head -20 || true
+          git log --format='%h %an <%ae> %s' -3
+          git show --stat HEAD~1 HEAD | cat
           for f in registry.yaml pkg.yaml scaffold.yaml; do
             echo "===== $f"; cat "pkgs/$PKG/$f" 2>/dev/null || true
           done
           mkdir -p "$RUNNER_TEMP/out"
-          cp -r "pkgs/$PKG" "$RUNNER_TEMP/out/" 2>/dev/null || true
-          cp "$RUNNER_TEMP/argd.log" "$RUNNER_TEMP/out/" || true
+          git format-patch -2 -o "$RUNNER_TEMP/out/patches"
+          cp -r "pkgs/$PKG" "$RUNNER_TEMP/out/files"
+          cp "$RUNNER_TEMP"/argd*.log "$RUNNER_TEMP/out/" || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
