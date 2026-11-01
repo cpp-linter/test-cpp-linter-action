@@ -11,6 +11,7 @@ downloads:
       major: ${version}=>(?P<major>\d+)\..*
     downloads:
       # Versions only hosted on the trunk.io CDN (tarballs with bin/clang-format).
+      # One entry per version: Trunk does not accept `||` here.
       - os:
           linux: linux
           macos: macos
@@ -18,7 +19,15 @@ downloads:
           x86_64: x86_64
           arm_64: arm64
         url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
-        version: 14.0.1 || 17.0.1
+        version: 14.0.1
+      - os:
+          linux: linux
+          macos: macos
+        cpu:
+          x86_64: x86_64
+          arm_64: arm64
+        url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
+        version: 17.0.1
       # Everything else: single static executables from cpp-linter.
       - os:
           linux: linux
