@@ -29,6 +29,7 @@ jobs:
         shell: bash
     env:
       AQUA_GITHUB_TOKEN: ${{ github.token }}
+      AQUA_POLICY_CONFIG: ${{ github.workspace }}/aqua-test/aqua-policy.yaml
     steps:
       - uses: actions/checkout@v7
         with:
