@@ -3,7 +3,7 @@ name: aqua install of cpp-linter clang-format/clang-tidy
 on:
   push:
     branches: [claude/project-thread-3y9j3l]
-    paths: [aqua-test/registry.yaml, aqua-test/tidy.cpp, .github/workflows/aqua-install.yml]
+    paths: [aqua-test/registry.yaml, aqua-test/aqua-policy.yaml, aqua-test/tidy.cpp, .github/workflows/aqua-install.yml]
   workflow_dispatch:
 
 permissions:
@@ -55,6 +55,7 @@ jobs:
           aqua_version: v2.65.2
       - name: aqua update-checksum and install
         run: |
+          aqua policy allow aqua-test/aqua-policy.yaml
           aqua update-checksum
           cat aqua-checksums.json
           aqua i
