@@ -36,7 +36,7 @@ jobs:
       - name: cpp-linter-action v3.0.0-rc0
         if: matrix.action == 'v3'
         id: v3
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@claude/project-thread-3y9j3l
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -78,7 +78,7 @@ jobs:
         with:
           persist-credentials: false
       - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+      - uses: cpp-linter/cpp-linter-action@claude/project-thread-3y9j3l
         id: linter
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -104,7 +104,7 @@ jobs:
         with:
           persist-credentials: false
       - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+      - uses: cpp-linter/cpp-linter-action@claude/project-thread-3y9j3l
         id: linter
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+      - uses: cpp-linter/cpp-linter-action@claude/project-thread-3y9j3l
         id: linter
         env:
           GITHUB_TOKEN: ${{ github.token }}
