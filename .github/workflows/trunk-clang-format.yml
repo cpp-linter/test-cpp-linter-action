@@ -1,0 +1,83 @@
+name: Trunk clang-format plugin with cpp-linter binaries
+
+on:
+  push:
+    branches: [claude/project-thread-3y9j3l]
+    paths: [trunk-test/**, .github/workflows/trunk-clang-format.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trunk:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Variant A: every version from cpp-linter/clang-tools-static-binaries.
+          - { variant: a, os: ubuntu-latest, version: 21.1.8 }
+          - { variant: a, os: ubuntu-24.04-arm, version: 21.1.8 }
+          - { variant: a, os: macos-latest, version: 21.1.8 }
+          - { variant: a, os: windows-latest, version: 21.1.8 }
+          - { variant: a, os: ubuntu-latest, version: 23.1.4 }
+          - { variant: a, os: ubuntu-latest, version: 16.0.3 }
+          # Variant B: 14.0.1 and 17.0.1 keep the trunk.io tarballs, the rest as A.
+          - { variant: b, os: ubuntu-latest, version: 14.0.1 }
+          - { variant: b, os: ubuntu-latest, version: 17.0.1 }
+          - { variant: b, os: macos-latest, version: 17.0.1 }
+          - { variant: b, os: ubuntu-latest, version: 21.1.8 }
+          - { variant: b, os: windows-latest, version: 21.1.8 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up a local copy of trunk-io/plugins with the modified plugin
+        env:
+          VARIANT: ${{ matrix.variant }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          git clone --depth 1 https://github.com/trunk-io/plugins "$RUNNER_TEMP/trunk-plugins"
+          cp "trunk-test/variant-$VARIANT.yaml" "$RUNNER_TEMP/trunk-plugins/linters/clang-format/plugin.yaml"
+          plugins_dir="$(cd "$RUNNER_TEMP/trunk-plugins" && (pwd -W 2>/dev/null || pwd))"
+          mkdir -p .trunk
+          cat > .trunk/trunk.yaml <<EOT
+          version: 0.1
+          cli:
+            version: 1.25.0
+          plugins:
+            sources:
+              - id: trunk
+                local: $plugins_dir
+          lint:
+            enabled:
+              - clang-format@$VERSION
+            ignore:
+              - linters: [ALL]
+                paths: [trunk-test/**, cpp-linter-action/**, .github/**]
+          EOT
+          cat .trunk/trunk.yaml
+      - name: trunk check (expects formatting issues in src/)
+        run: |
+          set +e
+          npx -y @trunkio/launcher check --all --filter=clang-format --no-fix --print-failures --ci 2>&1 | tee trunk-out.txt
+          echo "trunk exit code: ${PIPESTATUS[0]}"
+          set -e
+          grep -E "src/demo\.(cpp|hpp)" trunk-out.txt
+      - name: Which clang-format did Trunk install?
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          for d in "$HOME/.cache/trunk" "${LOCALAPPDATA:-/nonexistent}/trunk"; do
+            [ -d "$d" ] && find "$d" -ipath "*clang-format*" \( -iname 'clang-format' -o -iname 'clang-format.exe' \) -type f 2>/dev/null
+          done | tee found.txt
+          bin="$(grep -F "$VERSION" found.txt | head -1)"
+          [ -n "$bin" ] || bin="$(head -1 found.txt)"
+          ls -la "$bin"
+          "$bin" --version | tee version.txt
+          grep -F "$VERSION" version.txt
+          echo "${{ matrix.variant }} ${{ matrix.os }} $VERSION: $(cat version.txt)" >> "$GITHUB_STEP_SUMMARY"

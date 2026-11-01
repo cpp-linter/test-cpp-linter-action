@@ -1,10 +1,7 @@
 name: v3.0.0-rc0 e2e
 
 on:
-  push:
-    branches: [claude/project-thread-3y9j3l]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
