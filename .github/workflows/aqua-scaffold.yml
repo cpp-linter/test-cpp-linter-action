@@ -32,10 +32,12 @@ jobs:
           cd "$RUNNER_TEMP/ar"
           git config user.name "Xianpeng Shen"
           git config user.email "3353385+shenxianpeng@users.noreply.github.com"
+          aqua policy allow aqua-policy.yaml
           aqua i -l
           command -v argd
       - name: argd s
         run: |
+          set -o pipefail
           cd "$RUNNER_TEMP/ar"
           argd s -c "$GITHUB_WORKSPACE/aqua-test/${{ matrix.tool }}.scaffold.yaml" "$PKG" 2>&1 | tee "$RUNNER_TEMP/argd.log" | tail -150
       - name: Show generated files
