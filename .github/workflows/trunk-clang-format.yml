@@ -15,27 +15,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Variant A: every version from cpp-linter/clang-tools-static-binaries.
-          - { variant: a, os: ubuntu-latest, version: 21.1.8 }
-          - { variant: a, os: ubuntu-24.04-arm, version: 21.1.8 }
-          - { variant: a, os: macos-latest, version: 21.1.8 }
-          - { variant: a, os: windows-latest, version: 21.1.8 }
-          - { variant: a, os: ubuntu-latest, version: 23.1.4 }
-          - { variant: a, os: ubuntu-latest, version: 16.0.3 }
-          # Variant C: 14.0.1/17.0.1 from trunk.io tarballs, no `executable` key at all.
-          # (Variant B, `executable` per entry, is rejected by Trunk: "'executable' is not a recognized key".)
-          - { variant: c, os: ubuntu-latest, version: 14.0.1 }
-          - { variant: c, os: ubuntu-latest, version: 17.0.1 }
-          - { variant: c, os: macos-latest, version: 17.0.1 }
-          - { variant: c, os: ubuntu-latest, version: 21.1.8 }
-          - { variant: c, os: macos-latest, version: 21.1.8 }
-          - { variant: c, os: windows-latest, version: 21.1.8 }
-          # Variant D: same entries as C, with group-level `executable: true`.
-          - { variant: d, os: ubuntu-latest, version: 14.0.1 }
-          - { variant: d, os: ubuntu-latest, version: 17.0.1 }
-          - { variant: d, os: macos-latest, version: 17.0.1 }
-          - { variant: d, os: ubuntu-latest, version: 21.1.8 }
-          - { variant: d, os: windows-latest, version: 21.1.8 }
+          # Old versions still served from trunk.io
+          - { plugin: final, os: ubuntu-latest, version: 14.0.1 }
+          - { plugin: final, os: macos-latest, version: 14.0.1 }
+          - { plugin: final, os: ubuntu-latest, version: 17.0.1 }
+          - { plugin: final, os: ubuntu-24.04-arm, version: 17.0.1 }
+          - { plugin: final, os: macos-latest, version: 17.0.1 }
+          # Versions that used to come from trunk.io, now from cpp-linter
+          - { plugin: final, os: ubuntu-latest, version: 16.0.3 }
+          - { plugin: final, os: ubuntu-latest, version: 20.1.0 }
+          - { plugin: final, os: macos-latest, version: 20.1.0 }
+          # New versions and platforms
+          - { plugin: final, os: ubuntu-latest, version: 21.1.8 }
+          - { plugin: final, os: ubuntu-24.04-arm, version: 23.1.4 }
+          - { plugin: final, os: macos-latest, version: 23.1.4 }
+          - { plugin: final, os: windows-latest, version: 21.1.8 }
+          - { plugin: final, os: windows-latest, version: 23.1.4 }
+          - { plugin: final, os: windows-11-arm, version: 23.1.4 }
+          # No version pinned: what does `trunk check enable clang-format` pick?
+          - { plugin: final, os: ubuntu-latest, version: latest }
+          - { plugin: upstream, os: ubuntu-latest, version: latest }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -46,11 +45,14 @@ jobs:
           persist-credentials: false
       - name: Set up a local copy of trunk-io/plugins with the modified plugin
         env:
-          VARIANT: ${{ matrix.variant }}
+          PLUGIN: ${{ matrix.plugin }}
           VERSION: ${{ matrix.version }}
         run: |
           git clone --depth 1 https://github.com/trunk-io/plugins "$RUNNER_TEMP/trunk-plugins"
-          cp "trunk-test/variant-$VARIANT.yaml" "$RUNNER_TEMP/trunk-plugins/linters/clang-format/plugin.yaml"
+          if [ "$PLUGIN" = final ]; then
+            cp trunk-test/plugin.yaml "$RUNNER_TEMP/trunk-plugins/linters/clang-format/plugin.yaml"
+          fi
+          if [ "$VERSION" = latest ]; then enabled="[]"; else enabled="[clang-format@$VERSION]"; fi
           plugins_dir="$(cd "$RUNNER_TEMP/trunk-plugins" && (pwd -W 2>/dev/null || pwd))"
           mkdir -p .trunk
           cat > .trunk/trunk.yaml <<EOT
@@ -62,13 +64,20 @@ jobs:
               - id: trunk
                 local: $plugins_dir
           lint:
-            enabled:
-              - clang-format@$VERSION
+            enabled: $enabled
             ignore:
               - linters: [ALL]
                 paths: [trunk-test/**, cpp-linter-action/**, .github/**]
           EOT
           cat .trunk/trunk.yaml
+      - name: trunk check enable clang-format (no version pinned)
+        if: matrix.version == 'latest'
+        run: |
+          npx -y @trunkio/launcher check enable clang-format --ci 2>&1 | tail -20 || true
+          cat .trunk/trunk.yaml
+          picked="$(grep -oE 'clang-format@[^ "]+' .trunk/trunk.yaml | cut -d@ -f2)"
+          echo "${{ matrix.plugin }}: trunk check enable picked clang-format@$picked" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "VERSION=$picked" >> "$GITHUB_ENV"
       - name: trunk check (expects formatting issues in src/)
         run: |
           set +e
@@ -77,9 +86,8 @@ jobs:
           set -e
           grep -E "src.demo\.(cpp|hpp)" trunk-out.txt
       - name: Which clang-format did Trunk install?
-        env:
-          VERSION: ${{ matrix.version }}
         run: |
+          VERSION="${VERSION:-${{ matrix.version }}}"
           for d in "$HOME/.cache/trunk" "${LOCALAPPDATA:-/nonexistent}/trunk"; do
             if [ -d "$d" ]; then find "$d" -ipath "*clang-format*" \( -iname 'clang-format' -o -iname 'clang-format.exe' \) -type f 2>/dev/null; fi
           done | tee found.txt
@@ -88,4 +96,4 @@ jobs:
           ls -la "$bin"
           "$bin" --version | tee version.txt
           grep -F "$VERSION" version.txt
-          echo "${{ matrix.variant }} ${{ matrix.os }} $VERSION: $(cat version.txt)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ matrix.plugin }} ${{ matrix.os }} $VERSION: $(cat version.txt)" >> "$GITHUB_STEP_SUMMARY"

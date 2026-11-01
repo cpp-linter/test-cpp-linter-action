@@ -1,19 +1,25 @@
 version: 0.1
-# Static, single-file clang-format binaries from
-# https://github.com/cpp-linter/clang-tools-static-binaries (one release per LLVM
-# version, SHA512SUMS and GitHub build attestations; Linux, macOS, Windows on x86_64/arm64).
-# Variant C: no `executable` key at all (test whether Trunk marks raw files executable).
-# Published versions: https://cpp-linter.github.io/clang-tools-static-binaries/
+# clang-format 14.0.1 and 17.0.1 come from the trunk.io CDN (clang-format-only tarballs;
+# 14.0.1 has no linux-aarch64 build, neither has a Windows build).
+# Every other version comes from https://github.com/cpp-linter/clang-tools-static-binaries:
+# one static, single-file executable per platform (linux, macos, windows on x86_64 and arm64),
+# with SHA512SUMS and GitHub build attestations. Versions there (LLVM 12 and later):
+# https://cpp-linter.github.io/clang-tools-static-binaries/
 downloads:
   - name: clang-format
-    version: 21.1.8
+    version: 20.1.0
     args:
       major: ${version}=>(?P<major>\d+)\..*
     downloads:
-      # Versions only hosted on the trunk.io CDN (tarballs with bin/clang-format).
-      # One entry per version: Trunk does not accept `||` here.
+      # trunk.io CDN. One entry per version, since a version range cannot list single versions.
       - os:
           linux: linux
+        cpu:
+          arm_64: aarch64
+          x86_64: x86_64
+        url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
+        version: 14.0.1
+      - os:
           macos: macos
         cpu:
           x86_64: x86_64
@@ -22,13 +28,19 @@ downloads:
         version: 14.0.1
       - os:
           linux: linux
+        cpu:
+          arm_64: aarch64
+          x86_64: x86_64
+        url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
+        version: 17.0.1
+      - os:
           macos: macos
         cpu:
           x86_64: x86_64
           arm_64: arm64
         url: https://trunk.io/releases/clang-format-${version}-${os}-${cpu}.tar.gz
         version: 17.0.1
-      # Everything else: single static executables from cpp-linter.
+      # Everything else: cpp-linter/clang-tools-static-binaries.
       - os:
           linux: linux
           macos: macos
@@ -47,7 +59,7 @@ tools:
     - name: clang-format
       download: clang-format
       shims: [clang-format]
-      known_good_version: 16.0.3
+      known_good_version: 14.0.1
       environment:
         - name: PATH
           list: ["${tool}", "${tool}/bin"]
@@ -69,7 +81,7 @@ lint:
       tools: [clang-format]
       suggest_if: config_present
       direct_configs: [.clang-format]
-      known_good_version: 21.1.8
+      known_good_version: 20.1.0
       version_command:
         parse_regex: ${semver}
         run: clang-format --version
