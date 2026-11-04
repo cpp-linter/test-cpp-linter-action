@@ -17,3 +17,4 @@ int main()
 }
 // fork-PR comment recipe test
 // second run: the comment should be updated, not duplicated
+int thirdRun(int x) { return x; }
