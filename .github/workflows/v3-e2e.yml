@@ -1,0 +1,165 @@
+name: v3.0.0-rc0 e2e (cpp-linter rc.25)
+
+on:
+  push:
+    branches: [claude/project-thread-1yllzi]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  # Cross-platform smoke test: v3.0.0-rc0 vs v2 on the same commit.
+  matrix:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+        version: ['21']
+        action: [v3]
+        include:
+          - { os: ubuntu-latest, version: '12', action: v3 }
+          - { os: ubuntu-latest, version: '17', action: v3 }
+          - { os: ubuntu-latest, version: '23', action: v3 }
+          - { os: ubuntu-latest, version: '21', action: v2 }
+          - { os: macos-latest, version: '21', action: v2 }
+          - { os: windows-latest, version: '21', action: v2 }
+          # No database and no extra-args: the action passes empty path values.
+          - { os: ubuntu-latest, version: '21', action: v3-empty }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate compilation database
+        run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: cpp-linter-action v3.0.0-rc0
+        if: matrix.action == 'v3'
+        id: v3
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          files-changed-only: false
+          ignore: build
+          database: build
+          version: ${{ matrix.version }}
+          step-summary: true
+          extra-args: -std=c++14 -Wall
+      - name: cpp-linter-action v3.0.0-rc0, empty path inputs
+        if: matrix.action == 'v3-empty'
+        id: v3e
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          files-changed-only: false
+          ignore: build
+          version: ${{ matrix.version }}
+          step-summary: true
+      - name: cpp-linter-action v2
+        if: matrix.action == 'v2'
+        id: v2
+        uses: cpp-linter/cpp-linter-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          files-changed-only: false
+          ignore: build
+          database: build
+          version: ${{ matrix.version }}
+          step-summary: true
+          extra-args: -std=c++14 -Wall
+      - name: Outputs
+        shell: bash
+        run: |
+          echo "${{ matrix.action }} ${{ matrix.os }} clang ${{ matrix.version }}: total=${{ steps.v3.outputs.checks-failed }}${{ steps.v3e.outputs.checks-failed }}${{ steps.v2.outputs.checks-failed }} format=${{ steps.v3.outputs.clang-format-checks-failed }}${{ steps.v3e.outputs.clang-format-checks-failed }}${{ steps.v2.outputs.clang-format-checks-failed }} tidy=${{ steps.v3.outputs.clang-tidy-checks-failed }}${{ steps.v3e.outputs.clang-tidy-checks-failed }}${{ steps.v2.outputs.clang-tidy-checks-failed }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Only the deprecated alias is set: a review is expected if the alias works.
+  pr-alias:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          lines-changed-only: true
+          ignore: build
+          database: build
+          tidy-review: true
+          file-annotations: false
+          extra-args: -std=c++14 -Wall
+      - run: echo "alias run done at $(date -u +%FT%TZ), checks-failed=${{ steps.linter.outputs.checks-failed }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  pr-review:
+    needs: pr-alias
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          lines-changed-only: true
+          ignore: build
+          database: build
+          pr-review: true
+          thread-comments: update
+          step-summary: true
+          summary-output-file: cpp-linter-summary.md
+          extra-args: -std=c++14 -Wall
+      - name: Summary output file
+        run: test -s cpp-linter-summary.md && head -20 cpp-linter-summary.md
+      - run: echo "pr-review done at $(date -u +%FT%TZ), checks-failed=${{ steps.linter.outputs.checks-failed }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Runs after the review jobs so a pushed fix cannot move their diff mid-run.
+  auto-fix:
+    needs: pr-review
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: cmake -B build -S src -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          style: file
+          lines-changed-only: true
+          ignore: build
+          database: build
+          auto-fix: true
+          file-annotations: false
+          extra-args: -std=c++14 -Wall
+      - name: State after auto-fix
+        run: |
+          git log --oneline -3
+          git status --short
+          ls -la .cpp-linter-cache || true
