@@ -42,6 +42,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          # Workaround: rc.25 rejects the empty value the action passes when unset.
+          summary-output-file: cpp-linter-summary-${{ github.job }}.md
           style: file
           files-changed-only: false
           ignore: build
@@ -56,6 +58,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          # Workaround: rc.25 rejects the empty value the action passes when unset.
+          summary-output-file: cpp-linter-summary-${{ github.job }}.md
           style: file
           files-changed-only: false
           ignore: build
@@ -97,6 +101,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          # Workaround: rc.25 rejects the empty value the action passes when unset.
+          summary-output-file: cpp-linter-summary-${{ github.job }}.md
           style: file
           lines-changed-only: true
           ignore: build
@@ -123,6 +129,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          # Workaround: rc.25 rejects the empty value the action passes when unset.
+          summary-output-file: cpp-linter-summary-${{ github.job }}.md
           style: file
           lines-changed-only: true
           ignore: build
@@ -130,10 +138,9 @@ jobs:
           pr-review: true
           thread-comments: update
           step-summary: true
-          summary-output-file: cpp-linter-summary.md
           extra-args: -std=c++14 -Wall
       - name: Summary output file
-        run: test -s cpp-linter-summary.md && head -20 cpp-linter-summary.md
+        run: test -s cpp-linter-summary-pr-review.md && head -20 cpp-linter-summary-pr-review.md
       - run: echo "pr-review done at $(date -u +%FT%TZ), checks-failed=${{ steps.linter.outputs.checks-failed }}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Runs after the review jobs so a pushed fix cannot move their diff mid-run.
@@ -151,6 +158,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
+          # Workaround: rc.25 rejects the empty value the action passes when unset.
+          summary-output-file: cpp-linter-summary-${{ github.job }}.md
           style: file
           lines-changed-only: true
           ignore: build
