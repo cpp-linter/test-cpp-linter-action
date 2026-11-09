@@ -1,0 +1,47 @@
+# Temporary: produces the cpp-linter v2 (cpp-linter-rs) preview screenshots
+# for the cpp-linter-rs README. Remove after the screenshots are taken.
+name: v2 preview
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  cpp-linter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install cpp-linter v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release download cpp-linter/v2.0.0-rc.25
+          -R cpp-linter/cpp-linter-rs
+          --pattern cpp-linter-x86_64-unknown-linux-gnu.tar.gz
+          --output - | tar xz -C "$RUNNER_TEMP"
+
+      - name: Generate compilation database
+        run: cmake -Bbuild src
+
+      - name: Run cpp-linter
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          "$RUNNER_TEMP/cpp-linter"
+          --style=file
+          --version=21
+          --ignore=build
+          --database=build
+          --extra-arg="-std=c++14 -Wall"
+          --thread-comments=update
+          --pr-review=true
+          --file-annotations=true
+          --step-summary=true
