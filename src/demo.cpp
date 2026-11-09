@@ -7,11 +7,9 @@
 size_t dummyFunc(size_t i) { return i; }
 
 namespace {
-int scale(int value)
+bool hasName(const char* name)
 {
-    if (value > 0)
-        return value*3;
-    return 0;
+    return  name;
 }
 } // namespace
 
@@ -20,7 +18,7 @@ int main()
     for (;;)
         break;
 
-    printf("Hello world! %d\n", scale(14));
+    printf("Hello world!\n");
 
-    return 0;
+    return hasName("demo") ? 0 : 42;
 }

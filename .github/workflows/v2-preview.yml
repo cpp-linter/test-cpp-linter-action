@@ -37,6 +37,7 @@ jobs:
         run: >-
           "$RUNNER_TEMP/cpp-linter"
           --style=file
+          --tidy-checks=""
           --version=21
           --ignore=build
           --database=build
