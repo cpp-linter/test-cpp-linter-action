@@ -10,7 +10,7 @@ namespace {
 int scale(int value)
 {
     if (value > 0)
-        return value * 3;
+        return value*3;
     return 0;
 }
 } // namespace
