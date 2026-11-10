@@ -82,9 +82,9 @@ jobs:
           fi
 
   lint:
+    # The `paths` filter above limits this to PRs that change `.github/e2e/target.env`.
     if: >-
       github.event_name == 'pull_request' &&
-      startsWith(github.head_ref, 'e2e/') &&
       github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
