@@ -1,0 +1,266 @@
+name: e2e on a real PR
+
+# Tests a cpp-linter-action branch, tag or commit on a real pull request:
+#
+# 1. "Run workflow" (workflow_dispatch) creates a branch `e2e/run-<id>` with known lint problems
+#    (.github/e2e/demo.cpp.txt) and opens a PR for it.
+# 2. The PR runs the action under test on 3 operating systems.
+# 3. The `verify` job checks what the action left on the PR (thread comment, review, annotations,
+#    outputs), posts the result as a PR comment, and closes the PR if everything passed.
+#
+# A PR opened with the default GITHUB_TOKEN does not start workflows. Either add a repository
+# secret named E2E_TOKEN (a token that may push branches and open PRs here), or close and reopen
+# the PR that step 1 created.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action-ref:
+        description: Branch, tag or commit of cpp-linter-action to test
+        default: main
+        required: true
+      clang-version:
+        description: Version of the clang tools to use
+        default: '21'
+        required: true
+  pull_request:
+    branches: [master]
+    paths: [.github/e2e/target.env]
+
+permissions: {}
+
+concurrency:
+  group: e2e-pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  open-pr:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the credentials are kept because the next step pushes a branch
+          token: ${{ secrets.E2E_TOKEN || github.token }}
+
+      - name: Create the test branch and open a PR
+        env:
+          GH_TOKEN: ${{ secrets.E2E_TOKEN || github.token }}
+          HAS_E2E_TOKEN: ${{ secrets.E2E_TOKEN != '' }}
+          ACTION_REF: ${{ inputs.action-ref }}
+          CLANG_VERSION: ${{ inputs.clang-version }}
+        run: |
+          for value in "$ACTION_REF" "$CLANG_VERSION"; do
+            if [[ ! "$value" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::Unexpected characters in input: $value"
+              exit 1
+            fi
+          done
+          branch="e2e/run-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          cp .github/e2e/demo.cpp.txt src/demo.cpp
+          printf 'action-ref=%s\nclang-version=%s\n' "$ACTION_REF" "$CLANG_VERSION" > .github/e2e/target.env
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/demo.cpp .github/e2e/target.env
+          git commit -m "test: e2e fixture for cpp-linter-action@${ACTION_REF}"
+          git push origin "$branch"
+          url=$(gh pr create --base master --head "$branch" \
+            --title "test: e2e of cpp-linter-action@${ACTION_REF} (clang ${CLANG_VERSION})" \
+            --body "Opened by the \`e2e on a real PR\` workflow. Do not merge. It is closed automatically when all checks pass.")
+          echo "Opened $url" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$HAS_E2E_TOKEN" != "true" ]]; then
+            {
+              echo
+              echo "There is no \`E2E_TOKEN\` secret, so this PR was opened with the default token"
+              echo "and GitHub will not start the test for it. Close and reopen the PR to start it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Close and reopen $url to start the test (no E2E_TOKEN secret)."
+          fi
+
+  lint:
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'e2e/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      action-ref: ${{ steps.target.outputs.action-ref }}
+      action-sha: ${{ steps.action-sha.outputs.sha }}
+      clang-version: ${{ steps.target.outputs.clang-version }}
+      ubuntu-latest: ${{ steps.result.outputs.ubuntu-latest }}
+      macos-latest: ${{ steps.result.outputs.macos-latest }}
+      windows-latest: ${{ steps.result.outputs.windows-latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read which action version to test
+        id: target
+        shell: bash
+        run: |
+          ref=$(sed -n 's/^action-ref=//p' .github/e2e/target.env | head -n 1)
+          clang=$(sed -n 's/^clang-version=//p' .github/e2e/target.env | head -n 1)
+          for value in "$ref" "$clang"; do
+            if [[ ! "$value" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::Unexpected value in .github/e2e/target.env: $value"
+              exit 1
+            fi
+          done
+          echo "action-ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "clang-version=$clang" >> "$GITHUB_OUTPUT"
+
+      - name: Get the action under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cpp-linter/cpp-linter-action
+          ref: ${{ steps.target.outputs.action-ref }}
+          path: .e2e-action
+          persist-credentials: false
+
+      - name: Record the action's commit
+        id: action-sha
+        shell: bash
+        run: echo "sha=$(git -C .e2e-action rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate compilation database
+        shell: bash
+        run: mkdir build && cmake -Bbuild src
+
+      # Only one job posts to the PR, so that the jobs do not overwrite each other's feedback.
+      - name: Run the action under test
+        id: linter
+        uses: ./.e2e-action
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          lines-changed-only: true
+          ignore: build|.github|.e2e-action
+          database: build
+          verbosity: debug
+          version: ${{ steps.target.outputs.clang-version }}
+          extra-args: -std=c++14 -Wall
+          step-summary: true
+          thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
+          file-annotations: ${{ matrix.os == 'ubuntu-latest' }}
+          tidy-review: ${{ matrix.os == 'ubuntu-latest' }}
+          format-review: ${{ matrix.os == 'ubuntu-latest' }}
+
+      - name: Record the outputs
+        id: result
+        if: always()
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          TOTAL: ${{ steps.linter.outputs.checks-failed }}
+          TIDY: ${{ steps.linter.outputs.clang-tidy-checks-failed }}
+          FORMAT: ${{ steps.linter.outputs.clang-format-checks-failed }}
+        run: echo "${OS}=${TOTAL:-none}/${TIDY:-none}/${FORMAT:-none}" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: lint
+    if: always() && needs.lint.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to delete the test branch when the test passed
+      pull-requests: write
+      checks: read
+    steps:
+      - name: Check what the action left on the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          ACTION_REF: ${{ needs.lint.outputs.action-ref }}
+          ACTION_SHA: ${{ needs.lint.outputs.action-sha }}
+          CLANG_VERSION: ${{ needs.lint.outputs.clang-version }}
+          RESULT_UBUNTU: ${{ needs.lint.outputs.ubuntu-latest }}
+          RESULT_MACOS: ${{ needs.lint.outputs.macos-latest }}
+          RESULT_WINDOWS: ${{ needs.lint.outputs.windows-latest }}
+        run: |
+          marker='<!-- cpp linter action -->'
+          repo="$GITHUB_REPOSITORY"
+          failed=0
+          rows=""
+          check() { # check <name> <actual> <expected> <ok: true|false>
+            local mark=":white_check_mark:"
+            if [[ "$4" != "true" ]]; then mark=":x:"; failed=1; fi
+            rows+="| $1 | $2 | $3 | $mark |"$'\n'
+          }
+
+          check "lint jobs" "$LINT_RESULT" "success" "$([[ "$LINT_RESULT" == success ]] && echo true || echo false)"
+
+          for pair in "ubuntu-latest=$RESULT_UBUNTU" "macos-latest=$RESULT_MACOS" "windows-latest=$RESULT_WINDOWS"; do
+            os=${pair%%=*}
+            IFS=/ read -r total tidy format <<< "${pair#*=}"
+            ok=false
+            if [[ "$total" =~ ^[0-9]+$ && "$tidy" =~ ^[0-9]+$ && "$format" =~ ^[0-9]+$ ]] &&
+              (( tidy > 0 && format > 0 && total == tidy + format )); then
+              ok=true
+            fi
+            check "outputs on $os (total/tidy/format)" "${total:-none}/${tidy:-none}/${format:-none}" "tidy > 0, format > 0, total = tidy + format" "$ok"
+          done
+
+          comments=$(gh api "repos/$repo/issues/$PR/comments" --paginate |
+            jq -s --arg m "$marker" '[.[][] | select(.body | contains($m))] | length')
+          check "thread comments" "$comments" "1" "$([[ "$comments" == 1 ]] && echo true || echo false)"
+
+          reviews=$(gh api "repos/$repo/pulls/$PR/reviews" --paginate |
+            jq -s --arg m "$marker" '[.[][] | select(.body | contains($m))]')
+          review_count=$(jq 'length' <<< "$reviews")
+          review_state=$(jq -r '.[-1].state // "none"' <<< "$reviews")
+          check "PR reviews" "$review_count (latest: $review_state)" "1 or more (latest: CHANGES_REQUESTED)" \
+            "$([[ "$review_count" -ge 1 && "$review_state" == CHANGES_REQUESTED ]] && echo true || echo false)"
+
+          suggestions=$(gh api "repos/$repo/pulls/$PR/comments" --paginate |
+            jq -s --arg m "$marker" '[.[][] | select(.body | contains($m))] | length')
+          check "review comments" "$suggestions" "1 or more" "$([[ "$suggestions" -ge 1 ]] && echo true || echo false)"
+
+          run_id=$(gh api "repos/$repo/commits/$HEAD_SHA/check-runs" --paginate |
+            jq -s -r '[.[].check_runs[] | select(.name == "lint (ubuntu-latest)")] | sort_by(.started_at) | .[-1].id // empty')
+          annotations=0
+          if [[ -n "$run_id" ]]; then
+            annotations=$(gh api "repos/$repo/check-runs/$run_id/annotations" --paginate |
+              jq -s '[.[][] | select(.path | startswith("src/"))] | length')
+          fi
+          check "file annotations on src/" "$annotations" "2 or more" "$([[ "$annotations" -ge 2 ]] && echo true || echo false)"
+
+          {
+            echo "## e2e result: $([[ $failed == 0 ]] && echo passed || echo failed)"
+            echo
+            echo "cpp-linter-action \`$ACTION_REF\` (\`${ACTION_SHA:0:7}\`), clang $CLANG_VERSION,"
+            echo "[workflow run]($GITHUB_SERVER_URL/$repo/actions/runs/$GITHUB_RUN_ID)"
+            echo
+            echo "| Check | Actual | Expected | |"
+            echo "|---|---|---|---|"
+            printf '%s' "$rows"
+          } > result.md
+          cat result.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --repo "$repo" --body-file result.md
+          echo "failed=$failed" >> "$GITHUB_ENV"
+
+      - name: Close the PR when everything passed
+        if: env.failed == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr close "$PR" --repo "$GITHUB_REPOSITORY" --delete-branch
+
+      - name: Fail when a check did not pass
+        if: env.failed != '0'
+        run: |
+          echo "::error::The e2e test failed. The PR stays open so that it can be inspected."
+          exit 1
