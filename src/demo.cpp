@@ -6,12 +6,19 @@
 // using size_t from cstddef
 size_t dummyFunc(size_t i) { return i; }
 
+int scale(int value)
+{
+    if (value > 0)
+        return value*3;
+    return 0;
+}
+
 int main()
 {
     for (;;)
         break;
 
-    printf("Hello world!\n");
+    printf("Hello world! %d\n", scale( 14 ));
 
     return 0;
 }
