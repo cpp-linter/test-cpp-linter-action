@@ -1,7 +1,7 @@
 name: auto-fix HEAD check (temporary test)
 
-# Temporary: checks that auto-fix does not push a commit other than the one
-# that triggered the workflow. Delete together with this branch.
+# Temporary: checks that auto-fix still commits when the checked out commit is
+# the one that triggered the workflow. Delete together with this branch.
 
 on:
   push:
@@ -11,16 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  # Stand-in for an `issue_comment` run that checked out a pull request's head:
-  # HEAD is one commit ahead of GITHUB_SHA when the action runs.
-  other-commit-fixed:
+  same-commit-fixed:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Add a stand-in for a pull request's commit
-        run: >-
-          git -c user.name=e2e -c user.email=e2e@example.com
-          commit --allow-empty -m "stand-in for a pull request's commit (fixed action)"
       - uses: cpp-linter/cpp-linter-action@claude/project-thread-y4qppu
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -31,34 +25,9 @@ jobs:
           files-changed-only: false
           thread-comments: false
           auto-fix: true
-      - name: The branch must not have moved
+      - name: The branch must be one auto-fix commit ahead
         run: |
-          remote=$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)
-          echo "remote tip: $remote, GITHUB_SHA: $GITHUB_SHA"
-          test "$remote" = "$GITHUB_SHA"
-
-  # The same setup with the released v2: shows what happens without the fix.
-  other-commit-v2:
-    needs: other-commit-fixed
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Add a stand-in for a pull request's commit
-        run: >-
-          git -c user.name=e2e -c user.email=e2e@example.com
-          commit --allow-empty -m "stand-in for a pull request's commit (v2.24.1)"
-      - uses: cpp-linter/cpp-linter-action@v2.24.1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          version: '18'
-          style: file
-          tidy-checks: '-*'
-          files-changed-only: false
-          thread-comments: false
-          auto-fix: true
-      - name: Report where the branch is now
-        run: |
-          git fetch origin "refs/heads/$GITHUB_REF_NAME"
+          git fetch --depth=2 origin "refs/heads/$GITHUB_REF_NAME"
           echo "GITHUB_SHA: $GITHUB_SHA"
-          git log --format='%H %an: %s' "$GITHUB_SHA~1..FETCH_HEAD"
+          git log --format='%H %an: %s' -2 FETCH_HEAD
+          test "$(git rev-parse FETCH_HEAD~1)" = "$GITHUB_SHA"
