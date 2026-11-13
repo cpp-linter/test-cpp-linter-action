@@ -1,7 +1,7 @@
 name: auto-fix HEAD check (temporary test)
 
-# Temporary: checks that auto-fix still commits when the checked out commit is
-# the one that triggered the workflow. Delete together with this branch.
+# Temporary: the same two checks against the v3.0.0-rc0 based fix.
+# Delete together with this branch.
 
 on:
   push:
@@ -11,11 +11,17 @@ permissions:
   contents: write
 
 jobs:
-  same-commit-fixed:
+  # Stand-in for an `issue_comment` run that checked out a pull request's head:
+  # HEAD is one commit ahead of GITHUB_SHA when the action runs.
+  other-commit-v3-fixed:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: cpp-linter/cpp-linter-action@claude/project-thread-y4qppu
+      - name: Add a stand-in for a pull request's commit
+        run: >-
+          git -c user.name=e2e -c user.email=e2e@example.com
+          commit --allow-empty -m "stand-in for a pull request's commit (v3 fix)"
+      - uses: cpp-linter/cpp-linter-action@claude/project-thread-y4qppu-v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -23,6 +29,29 @@ jobs:
           style: file
           tidy-checks: '-*'
           files-changed-only: false
+          lines-changed-only: false
+          thread-comments: false
+          auto-fix: true
+      - name: The branch must not have moved
+        run: |
+          remote=$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)
+          echo "remote tip: $remote, GITHUB_SHA: $GITHUB_SHA"
+          test "$remote" = "$GITHUB_SHA"
+
+  same-commit-v3-fixed:
+    needs: other-commit-v3-fixed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cpp-linter/cpp-linter-action@claude/project-thread-y4qppu-v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: '18'
+          style: file
+          tidy-checks: '-*'
+          files-changed-only: false
+          lines-changed-only: false
           thread-comments: false
           auto-fix: true
       - name: The branch must be one auto-fix commit ahead
