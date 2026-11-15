@@ -5,6 +5,7 @@ on:
     branches: [claude/project-thread-hdejwt]
     paths: [.github/workflows/v3-output.yml, output-test/**]
 
+
 permissions: {}
 
 jobs:
@@ -21,6 +22,8 @@ jobs:
       - run: git -c user.name=ci -c user.email=ci@example.com commit --allow-empty -qm "local only"
       - name: action v3.0.0-rc0 (before)
         id: before
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
         with:
           style: llvm
@@ -32,6 +35,8 @@ jobs:
           step-summary: false
       - name: action with the fix (after)
         id: after
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         uses: cpp-linter/cpp-linter-action@claude/project-thread-hdejwt
         with:
           style: llvm
