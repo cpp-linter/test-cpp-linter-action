@@ -4,8 +4,7 @@ name: v3 stress test
 # Every job prints one `RESULT {...}` line per action run, so runs can be compared from the logs.
 
 on:
-  push:
-    branches: [claude/project-thread-hdejwt]
+  workflow_dispatch:
   pull_request:
     branches: [claude/project-thread-hdejwt]
 

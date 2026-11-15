@@ -1,0 +1,54 @@
+name: v3 fix-patch-path output
+
+on:
+  push:
+    branches: [claude/project-thread-hdejwt]
+    paths: [.github/workflows/v3-output.yml, output-test/**]
+
+permissions: {}
+
+jobs:
+  output:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # Make HEAD differ from GITHUB_SHA, so auto-fix only generates the patch
+      # and skips its commit (nothing is pushed).
+      - run: git -c user.name=ci -c user.email=ci@example.com commit --allow-empty -qm "local only"
+      - name: action v3.0.0-rc0 (before)
+        id: before
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          style: llvm
+          tidy-checks: '-*'
+          files-changed-only: true
+          auto-fix: true
+          thread-comments: false
+          file-annotations: false
+          step-summary: false
+      - name: action with the fix (after)
+        id: after
+        uses: cpp-linter/cpp-linter-action@claude/project-thread-hdejwt
+        with:
+          style: llvm
+          tidy-checks: '-*'
+          files-changed-only: true
+          auto-fix: true
+          thread-comments: false
+          file-annotations: false
+          step-summary: false
+      - name: Compare outputs
+        env:
+          BEFORE: ${{ steps.before.outputs.fix-patch-path }}
+          AFTER: ${{ steps.after.outputs.fix-patch-path }}
+        run: |
+          echo "before: fix-patch-path='$BEFORE'"
+          echo "after:  fix-patch-path='$AFTER'"
+          test -z "$BEFORE"
+          test -n "$AFTER"
+          git apply --check "$AFTER"
+          cat "$AFTER"
