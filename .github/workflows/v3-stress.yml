@@ -1,0 +1,367 @@
+name: v3 stress test
+
+# Temporary stress test: cpp-linter-action v3.0.0-rc0 (cpp-linter-rs) next to v2 (Python cpp-linter).
+# Every job prints one `RESULT {...}` line per action run, so runs can be compared from the logs.
+
+on:
+  push:
+    branches: [claude/project-thread-hdejwt]
+  pull_request:
+    branches: [claude/project-thread-hdejwt]
+
+permissions: {}
+
+env:
+  CLEAN_IGNORE: .github|stress
+  STRESS_IGNORE: .github|src
+  NAMES_IGNORE: .github|src|stress/latin1.cpp
+
+jobs:
+  platforms:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest, windows-11-arm]
+        action: [v2, v3]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: v2 clean
+        id: v2-clean
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+          step-summary: true
+      - name: v3 clean
+        id: v3-clean
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+          step-summary: true
+
+      - name: v2 stress
+        id: v2-stress
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          files-changed-only: false
+          ignore: ${{ env.STRESS_IGNORE }}
+          step-summary: true
+      - name: v3 stress
+        id: v3-stress
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          files-changed-only: false
+          ignore: ${{ env.STRESS_IGNORE }}
+          step-summary: true
+
+      - name: v2 names (no latin1)
+        id: v2-names
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          files-changed-only: false
+          ignore: ${{ env.NAMES_IGNORE }}
+      - name: v3 names (no latin1)
+        id: v3-names
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          files-changed-only: false
+          ignore: ${{ env.NAMES_IGNORE }}
+
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          CLEAN: ${{ matrix.action == 'v2' && toJSON(steps.v2-clean) || toJSON(steps.v3-clean) }}
+          STRESS: ${{ matrix.action == 'v2' && toJSON(steps.v2-stress) || toJSON(steps.v3-stress) }}
+          NAMES: ${{ matrix.action == 'v2' && toJSON(steps.v2-names) || toJSON(steps.v3-names) }}
+        run: |
+          for s in CLEAN STRESS NAMES; do
+            echo "RESULT ${{ matrix.os }} ${{ matrix.action }} $s $(jq -c '{outcome, out: .outputs}' <<< "${!s}")"
+          done
+          git status --short
+
+  versions:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        version: ['', '12', '17', '23', '=21.1.8', '>=17, <20', '99', '22.1']
+        action: [v2, v3]
+        exclude:
+          - action: v2
+            version: '=21.1.8'
+          - action: v2
+            version: '>=17, <20'
+          - action: v2
+            version: '22.1'
+          - action: v2
+            version: '17'
+          - os: macos-latest
+            version: '17'
+          - os: windows-latest
+            version: '17'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: v2
+        id: v2
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+          version: ${{ matrix.version }}
+      - name: v3
+        id: v3
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+          version: ${{ matrix.version }}
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ matrix.action == 'v2' && toJSON(steps.v2) || toJSON(steps.v3) }}
+        run: |
+          echo "RESULT ${{ matrix.os }} ${{ matrix.action }} version='${{ matrix.version }}' $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+          for t in clang-format clang-tidy; do command -v $t && $t --version | head -n 1 || true; done
+
+  container:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        action: [v2, v3]
+        image: ['ubuntu:24.04', 'debian:12']
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    permissions:
+      contents: read
+    steps:
+      - name: Install git and curl
+        run: apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: v2
+        id: v2
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+      - name: v3
+        id: v3
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        with:
+          files-changed-only: false
+          ignore: ${{ env.CLEAN_IGNORE }}
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ matrix.action == 'v2' && toJSON(steps.v2) || toJSON(steps.v3) }}
+        run: |
+          echo "RESULT ${{ matrix.image }} ${{ matrix.action }} $(echo "$R" | tr -d '\n ')"
+
+  permissions:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        action: [v2, v3]
+        token: [read-only, none]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: v2
+        id: v2
+        if: matrix.action == 'v2'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        env:
+          GITHUB_TOKEN: ${{ matrix.token == 'read-only' && secrets.GITHUB_TOKEN || '' }}
+        with:
+          ignore: .github
+          thread-comments: 'true'
+          step-summary: true
+      - name: v3
+        id: v3
+        if: matrix.action == 'v3'
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        env:
+          GITHUB_TOKEN: ${{ matrix.token == 'read-only' && secrets.GITHUB_TOKEN || '' }}
+        with:
+          ignore: .github
+          thread-comments: 'true'
+          step-summary: true
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ matrix.action == 'v2' && toJSON(steps.v2) || toJSON(steps.v3) }}
+        run: |
+          echo "RESULT token=${{ matrix.token }} ${{ matrix.action }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+
+  make-pr-branches:
+    # Branches for real PRs (opened by a person, so that workflows run on them).
+    # The commits are made by github-actions[bot].
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create the PR branches
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # pure rename, mode-only change, a new file without a final newline, small edits
+          git mv src/demo.cpp src/moved_demo.cpp
+          git update-index --chmod=+x src/demo.hpp
+          printf '#include <cstdio>\nint added(){\n  int   x=1;\n  printf("%%d",x);\n  return x;}' > src/no_final_newline.cpp
+          printf 'int   edited_space( ){return 1;}\n' >> "stress/with space.cpp"
+          printf 'int   edited_cjk( ){return 2;}\n' >> "stress/中文.cpp"
+          git add -A
+          git commit -m "test: stress PR fixture"
+          for a in v2 v3; do
+            git push origin "HEAD:refs/heads/e2e/stress-$a-${GITHUB_RUN_ID}"
+          done
+          echo "branches: e2e/stress-v2-${GITHUB_RUN_ID} e2e/stress-v3-${GITHUB_RUN_ID}"
+
+  pr-lint:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/stress-')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: v2
+        id: v2
+        if: startsWith(github.head_ref, 'e2e/stress-v2-')
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          ignore: .github|stress/latin1.cpp
+          lines-changed-only: true
+          step-summary: true
+          thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
+          tidy-review: ${{ matrix.os == 'ubuntu-latest' }}
+          format-review: ${{ matrix.os == 'ubuntu-latest' }}
+          file-annotations: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: v3
+        id: v3
+        if: startsWith(github.head_ref, 'e2e/stress-v3-')
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          ignore: .github|stress/latin1.cpp
+          lines-changed-only: true
+          step-summary: true
+          thread-comments: ${{ matrix.os == 'ubuntu-latest' && 'update' || 'false' }}
+          pr-review: ${{ matrix.os == 'ubuntu-latest' }}
+          file-annotations: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ startsWith(github.head_ref, 'e2e/stress-v2-') && toJSON(steps.v2) || toJSON(steps.v3) }}
+        run: |
+          echo "RESULT ${{ matrix.os }} ${{ github.head_ref }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+
+  pr-auto-fix:
+    needs: pr-lint
+    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/stress-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+      - name: v2
+        id: v2
+        if: startsWith(github.head_ref, 'e2e/stress-v2-')
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          ignore: .github|stress/latin1.cpp
+          lines-changed-only: true
+          tidy-checks: '-*'
+          auto-fix: true
+          auto-fix-git-user: github-actions[bot]
+          auto-fix-git-email: 41898282+github-actions[bot]@users.noreply.github.com
+      - name: v3
+        id: v3
+        if: startsWith(github.head_ref, 'e2e/stress-v3-')
+        continue-on-error: true
+        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          ignore: .github|stress/latin1.cpp
+          lines-changed-only: true
+          tidy-checks: '-*'
+          auto-fix: true
+          auto-fix-git-user: github-actions[bot]
+          auto-fix-git-email: 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ startsWith(github.head_ref, 'e2e/stress-v2-') && toJSON(steps.v2) || toJSON(steps.v3) }}
+        run: |
+          echo "RESULT auto-fix ${{ github.head_ref }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+          git log --oneline -3
+          git status --short
