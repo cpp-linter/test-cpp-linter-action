@@ -1,7 +1,7 @@
 name: v3 clean e2e
 
 # Temporary test: cpp-linter-action v3.0.0-rc0 (tip eb04e64, pins cpp-linter 2.0.0rc25 =
-# cpp-linter-rs v2.0.0-rc.26) used the way users use it: `uses: owner/repo@ref`,
+# cpp-linter-rs v2.0.0-rc.26) used the way users use it: `uses: owner/repo@<sha>`,
 # fresh runners, no local checkout of the action. Each case prints one `RESULT ...` line.
 
 on:
@@ -26,7 +26,7 @@ jobs:
       - name: clean (src only)
         id: clean
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: .github|stress|cap|badfmt|fmtok
@@ -35,7 +35,7 @@ jobs:
       - name: stress (odd names, latin1, CRLF, BOM, no final newline)
         id: stress
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: .github|src|cap|badfmt|fmtok
@@ -44,7 +44,7 @@ jobs:
       - name: blank ignore
         id: blank
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: ''
@@ -52,7 +52,7 @@ jobs:
       - name: repo config files (style file, tidy-checks blank)
         id: repocfg
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: .github|stress|cap|badfmt|fmtok
@@ -61,7 +61,7 @@ jobs:
       - name: bad .clang-format in one folder
         id: badfmt
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: .github|src|stress|cap
@@ -72,7 +72,7 @@ jobs:
       - name: strict input check (bad value)
         id: badinput
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           lines-changed-only: maybe
       - name: Report
@@ -108,7 +108,7 @@ jobs:
       - name: lint
         id: lint
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         with:
           files-changed-only: false
           ignore: .github|stress|cap|badfmt|fmtok
@@ -137,7 +137,7 @@ jobs:
       - name: lint
         id: lint
         continue-on-error: true
-        uses: cpp-linter/cpp-linter-action@v3.0.0-rc0
+        uses: cpp-linter/cpp-linter-action@eb04e64a458d95a52bd4ace41f68a3caf6035c8d # v3.0.0-rc0
         env:
           GITHUB_TOKEN: ${{ matrix.token == 'read-only' && secrets.GITHUB_TOKEN || '' }}
         with:
