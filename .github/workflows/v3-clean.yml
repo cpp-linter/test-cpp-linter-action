@@ -149,4 +149,5 @@ jobs:
         shell: bash
         env:
           R: ${{ toJSON(steps.lint) }}
-        run: echo "RESULT token=${{ matrix.token }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+        run: |
+          echo "RESULT token=${{ matrix.token }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
