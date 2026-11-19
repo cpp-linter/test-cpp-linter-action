@@ -1,5 +1,5 @@
-# Temporary: produces the cpp-linter v2 (cpp-linter-rs) preview screenshots
-# for the cpp-linter-rs README. Remove after the screenshots are taken.
+# Temporary: produces the screenshots of cpp-linter v2's redesigned comment, review
+# and annotations for the cpp-linter-rs README. Remove after the screenshots are taken.
 name: v2 preview
 
 on:
@@ -18,14 +18,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install cpp-linter v2
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release download cpp-linter/v2.0.0-rc.25
-          -R cpp-linter/cpp-linter-rs
-          --pattern cpp-linter-x86_64-unknown-linux-gnu.tar.gz
-          --output - | tar xz -C "$RUNNER_TEMP"
+      - name: Build cpp-linter v2 from the redesign branch
+        # The status marks are not on the main branch of cpp-linter/.github yet,
+        # so this build loads them from the branch that adds them.
+        run: |
+          git clone --depth 1 -b claude/project-thread-plvb9l \
+            https://github.com/cpp-linter/cpp-linter-rs "$RUNNER_TEMP/rs"
+          sed -i 's#cpp-linter/.github/main/branding#cpp-linter/.github/claude/project-thread-plvb9l/branding#' \
+            "$RUNNER_TEMP/rs/cpp-linter/src/markdown.rs"
+          cargo build --release --features bin --bin cpp-linter \
+            --manifest-path "$RUNNER_TEMP/rs/Cargo.toml"
+          cp "$RUNNER_TEMP/rs/target/release/cpp-linter" "$RUNNER_TEMP/cpp-linter"
 
       - name: Generate compilation database
         run: cmake -Bbuild src
