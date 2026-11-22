@@ -1,1 +1,1 @@
-int   top_dash( ){return 1;}
+static auto top_dash() -> int { return 1; }
