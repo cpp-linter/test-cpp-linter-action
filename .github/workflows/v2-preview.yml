@@ -1,5 +1,5 @@
-# Temporary: produces the screenshots of cpp-linter v2's redesigned comment, review
-# and annotations for the cpp-linter-rs README. Remove after the screenshots are taken.
+# Temporary: produces the step summary screenshot of cpp-linter v2.0.0-rc.27 for the
+# cpp-linter-rs README and docs. Remove after the screenshot is taken.
 name: v2 preview
 
 on:
@@ -8,7 +8,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   cpp-linter:
@@ -18,13 +18,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build cpp-linter v2 from the redesign branch
+      - name: Download cpp-linter v2.0.0-rc.27
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git clone --depth 1 -b claude/project-thread-plvb9l \
-            https://github.com/cpp-linter/cpp-linter-rs "$RUNNER_TEMP/rs"
-          cargo build --release --features bin --bin cpp-linter \
-            --manifest-path "$RUNNER_TEMP/rs/Cargo.toml"
-          cp "$RUNNER_TEMP/rs/target/release/cpp-linter" "$RUNNER_TEMP/cpp-linter"
+          gh release download cpp-linter/v2.0.0-rc.27 -R cpp-linter/cpp-linter-rs \
+            -p 'cpp-linter-x86_64-unknown-linux-gnu.tar.gz' -D "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/cpp-linter-x86_64-unknown-linux-gnu.tar.gz" -C "$RUNNER_TEMP"
+          find "$RUNNER_TEMP" -maxdepth 3 -name cpp-linter -type f
+          bin=$(find "$RUNNER_TEMP" -maxdepth 3 -name cpp-linter -type f | head -1)
+          [ "$bin" = "$RUNNER_TEMP/cpp-linter" ] || cp "$bin" "$RUNNER_TEMP/cpp-linter"
+          "$RUNNER_TEMP/cpp-linter" --version
 
       - name: Generate compilation database
         run: cmake -Bbuild src
@@ -41,7 +45,7 @@ jobs:
           --ignore=build
           --database=build
           --extra-arg="-std=c++14 -Wall"
-          --thread-comments=update
-          --pr-review=true
-          --file-annotations=true
+          --thread-comments=false
+          --pr-review=false
+          --file-annotations=false
           --step-summary=true
