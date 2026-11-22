@@ -1,5 +1,6 @@
 #include <cstdio>
-int added(){
-  int   x=1;
-  printf("%d",x);
-  return x;}
+static auto added() -> int {
+  int const x = 1;
+  printf("%d", x);
+  return x;
+}

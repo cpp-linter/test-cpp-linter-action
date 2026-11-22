@@ -1,8 +1,9 @@
-int fixits(int x, int *p) {
-  if (p == 0)
+static auto fixits(int x, const int *p) -> int {
+  if (p == nullptr) {
     return 0;
-  if (x > 1)
+  }
+  if (x > 1) {
     return 1;
-  else
-    return 2;
+  }
+  return 2;
 }
