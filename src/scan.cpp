@@ -1,6 +1,8 @@
 #include <string>
 #include <vector>
 
+int twice(int value) { return value * 2; }
+
 int sum(std::vector<int> values)
 {
     int total = 0;

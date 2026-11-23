@@ -41,8 +41,8 @@ jobs:
           --version=18
           --style=file
           --tidy-checks=''
-          --lines-changed-only=false
-          --files-changed-only="$FILES_CHANGED_ONLY"
+          --lines-changed-only="${{ github.event_name == 'push' && 'true' || 'false' }}"
+          --files-changed-only="${{ github.event_name == 'push' && 'true' || env.FILES_CHANGED_ONLY }}"
           --sarif-file=cpp-linter.sarif
 
       - name: Upload to code scanning
