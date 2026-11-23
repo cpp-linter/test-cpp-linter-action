@@ -1,0 +1,57 @@
+# Benchmark for cpp-linter-rs#476: v1 (1.16.1) vs v2 (2.0.0-rc.27) on libgit2 v1.8.1.
+name: benchmark v1 vs v2
+
+on:
+  push:
+    branches: [claude/project-thread-u751ea-bench]
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q clang-tidy-18 clang-format-18
+          curl -sSL https://github.com/sharkdp/hyperfine/releases/download/v1.19.0/hyperfine-v1.19.0-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$RUNNER_TEMP"
+          python3 -m venv "$RUNNER_TEMP/v1" && "$RUNNER_TEMP/v1/bin/pip" install -q cpp-linter==1.16.1
+          mkdir -p "$RUNNER_TEMP/v2"
+          curl -sSL https://github.com/cpp-linter/cpp-linter-rs/releases/download/cpp-linter/v2.0.0-rc.27/cpp-linter-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C "$RUNNER_TEMP/v2"
+          "$RUNNER_TEMP/v2/cpp-linter" version
+          nproc; free -m
+
+      - name: Prepare libgit2
+        run: |
+          git clone -q --depth 1 --branch v1.8.1 https://github.com/libgit2/libgit2 "$RUNNER_TEMP/libgit2"
+          cmake -B "$RUNNER_TEMP/libgit2/build" -S "$RUNNER_TEMP/libgit2" -D CMAKE_EXPORT_COMPILE_COMMANDS=ON -D BUILD_TESTS=OFF -D BUILD_CLI=OFF > /dev/null
+
+      - name: Benchmark
+        run: >-
+          .github/bench/bench.sh
+          "$RUNNER_TEMP/v1/bin/cpp-linter"
+          "$RUNNER_TEMP/v2/cpp-linter"
+          "$RUNNER_TEMP/hyperfine-v1.19.0-x86_64-unknown-linux-musl/hyperfine"
+          "$RUNNER_TEMP/libgit2"
+          "$RUNNER_TEMP/out"
+
+      - name: Results
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/out"
+          for f in startup format-1 format-all full-all full-1; do echo "### $f"; cat "$f.md" 2>/dev/null; echo; done | tee -a "$GITHUB_STEP_SUMMARY"
+          cat mem-v1.txt mem-v2.txt
+          grep -ohE '[0-9]+ clang-(format|tidy)-checks-failed' full-v1.out | tail -2
+          grep -ohE 'clang-(format|tidy)-checks-failed: [0-9]+' full-v2.out | tail -2
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench-results
+          path: ${{ runner.temp }}/out
