@@ -1,13 +1,9 @@
 #include <string>
 #include <vector>
 
-<<<<<<< HEAD
-int sum(const std::vector<int> &values)
-=======
 int twice(int value) { return value * 2; }
 
-int sum(std::vector<int> values)
->>>>>>> claude/project-thread-u751ea-sarif
+int sum(const std::vector<int> &values)
 {
     int total = 0;
     for (auto v : values)
