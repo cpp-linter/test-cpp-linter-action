@@ -1,0 +1,66 @@
+# Recipe test for cpp-linter-rs#565: upload --sarif-file to GitHub code scanning.
+name: code scanning (SARIF)
+
+on:
+  push:
+    branches: [claude/project-thread-u751ea-sarif]
+  pull_request:
+    branches: [claude/project-thread-u751ea-sarif]
+
+permissions:
+  contents: read
+
+jobs:
+  cpp-linter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install cpp-linter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download cpp-linter/v2.0.0-rc.27 -R cpp-linter/cpp-linter-rs \
+            -p cpp-linter-x86_64-unknown-linux-gnu.tar.gz -O - | tar -xz -C "$RUNNER_TEMP"
+          find "$RUNNER_TEMP" -maxdepth 2 -name cpp-linter -type f -exec dirname {} \; >> "$GITHUB_PATH"
+
+      # Push: scan every file, so the upload is the full state of the branch.
+      # Pull request: every line of the changed files, so alerts line up with the base branch.
+      - name: Run cpp-linter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FILES_CHANGED_ONLY: ${{ github.event_name == 'pull_request' }}
+        run: >-
+          cpp-linter
+          --version=18
+          --style=file
+          --tidy-checks=''
+          --lines-changed-only=false
+          --files-changed-only="$FILES_CHANGED_ONLY"
+          --sarif-file=cpp-linter.sarif
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: cpp-linter.sarif
+          category: cpp-linter
+
+      # Only for this test: print what code scanning now shows.
+      - name: Show code scanning alerts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.number) || github.ref }}
+        run: |
+          echo "## alerts for $REF"
+          gh api "repos/$GITHUB_REPOSITORY/code-scanning/alerts?ref=$REF&per_page=100" \
+            --jq '.[] | "\(.number) \(.state) \(.rule.id) \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)"'
+          echo "## analyses for $REF"
+          gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$REF&per_page=5" \
+            --jq '.[] | "\(.id) \(.category) results=\(.results_count) \(.created_at)"'
