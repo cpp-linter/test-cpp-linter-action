@@ -3,7 +3,7 @@
 
 int twice(int value) { return value * 2; }
 
-int sum(std::vector<int> values)
+int sum(const std::vector<int> &values)
 {
     int total = 0;
     for (auto v : values)
@@ -17,4 +17,9 @@ bool is_empty(const std::string &text)
         return true;
     else
         return false;
+}
+
+int scale(int x)
+{
+    return x * 42;
 }
