@@ -41,7 +41,7 @@ jobs:
           --version=18
           --style=file
           --tidy-checks=''
-          --lines-changed-only=false
+          --lines-changed-only="${{ github.event_name == 'pull_request' }}"
           --files-changed-only="$FILES_CHANGED_ONLY"
           --sarif-file=cpp-linter.sarif
 
