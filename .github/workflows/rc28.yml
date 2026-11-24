@@ -1,19 +1,19 @@
-name: rs rc.27 test
+name: rs rc.28 test
 
-# Temporary test: cpp-linter-action v3 with cpp-linter 2.0.0rc26 (= cpp-linter-rs v2.0.0-rc.27)
-# from branch claude/project-thread-u751ea-rc27, next to v3.0.0-rc0 (2.0.0rc25 = rs rc.26).
+# Temporary test: cpp-linter-action v3 with cpp-linter 2.0.0rc27 (= cpp-linter-rs v2.0.0-rc.28)
+# from branch claude/project-thread-u751ea-rc28, next to v3.0.0-rc0 (2.0.0rc26 = rs rc.27).
 # Every case prints one `RESULT ...` line and the step summary, so runs can be compared from the logs.
 
 on:
   push:
-    branches: [claude/project-thread-u751ea-rc27]
+    branches: [claude/project-thread-u751ea-rc28]
   pull_request:
-    branches: [claude/project-thread-u751ea-rc27]
+    branches: [claude/project-thread-u751ea-rc28]
 
 permissions: {}
 
 env:
-  NEW_REF: claude/project-thread-u751ea-rc27
+  NEW_REF: claude/project-thread-u751ea-rc28
   OLD_REF: v3.0.0-rc0
 
 jobs:
@@ -277,12 +277,12 @@ jobs:
           git add -A
           git commit -m "test: rc.27 PR fixture"
           for a in new old; do
-            git push origin "HEAD:refs/heads/e2e/rc27-$a-${GITHUB_RUN_ID}"
+            git push origin "HEAD:refs/heads/e2e/rc28-$a-${GITHUB_RUN_ID}"
           done
-          echo "branches: e2e/rc27-new-${GITHUB_RUN_ID} e2e/rc27-old-${GITHUB_RUN_ID}"
+          echo "branches: e2e/rc28-new-${GITHUB_RUN_ID} e2e/rc28-old-${GITHUB_RUN_ID}"
 
   pr-lint:
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc27-')
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc28-')
     strategy:
       fail-fast: false
       matrix:
@@ -298,7 +298,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cpp-linter/cpp-linter-action
-          ref: ${{ startsWith(github.head_ref, 'e2e/rc27-new-') && env.NEW_REF || env.OLD_REF }}
+          ref: ${{ startsWith(github.head_ref, 'e2e/rc28-new-') && env.NEW_REF || env.OLD_REF }}
           path: .action
           persist-credentials: false
       - name: lint
@@ -326,7 +326,7 @@ jobs:
 
   pr-auto-fix:
     needs: pr-lint
-    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc27-')
+    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc28-')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -337,7 +337,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cpp-linter/cpp-linter-action
-          ref: ${{ startsWith(github.head_ref, 'e2e/rc27-new-') && env.NEW_REF || env.OLD_REF }}
+          ref: ${{ startsWith(github.head_ref, 'e2e/rc28-new-') && env.NEW_REF || env.OLD_REF }}
           path: .action
           persist-credentials: false
       - name: auto-fix
