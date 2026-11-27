@@ -1,0 +1,60 @@
+name: strict + auto-fix
+
+# Temporary e2e test of the auto-fix + strict fix on cpp-linter-action#543.
+
+on:
+  push:
+    branches: [claude/project-thread-xqhq16]
+
+permissions: {}
+
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      max-parallel: 1 # both push to this branch; run one after the other
+      matrix:
+        include:
+          - name: before-fix
+            ref: 5623e7c10c3b4bc4b77e1b10b70f78fb1ee7ed1c
+          - name: after-fix
+            ref: 011dcbf81a8ac59209e8542da1fec9cc18e33703
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cpp-linter/cpp-linter-action
+          ref: ${{ matrix.ref }}
+          path: .action-under-test
+          persist-credentials: false
+      - name: auto-fix + strict
+        id: linter
+        continue-on-error: true
+        uses: ./.action-under-test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: file
+          tidy-checks: '-*'
+          files-changed-only: false
+          lines-changed-only: false
+          ignore: .github|.action-under-test
+          thread-comments: false
+          auto-fix: true
+          auto-fix-commit-msg: 'test: auto-fix commit from ${{ matrix.name }}'
+          strict: true
+      - name: Report
+        if: always()
+        shell: bash
+        env:
+          R: ${{ toJSON(steps.linter) }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          remote=$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)
+          echo "RESULT ${{ matrix.name }} $(jq -c '{outcome, out: .outputs}' <<< "$R")"
+          echo "RESULT ${{ matrix.name }} trigger=$GITHUB_SHA remote=$remote"
+          git log --oneline -3 "$remote" 2>/dev/null || git fetch -q origin "$BRANCH" && git log --oneline -3 FETCH_HEAD
