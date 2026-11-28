@@ -1,20 +1,21 @@
-name: rs rc.28 test
+name: rs rc.29 test
 
-# Temporary test: cpp-linter-action v3 with cpp-linter 2.0.0rc27 (= cpp-linter-rs v2.0.0-rc.28)
-# from branch claude/project-thread-u751ea-rc28, next to v3.0.0-rc0 (2.0.0rc26 = rs rc.27).
+# Temporary test: cpp-linter-action v3 (PR #543 head, branch claude/project-thread-r495nc) with
+# cpp-linter 2.0.0rc29 (= cpp-linter-rs v2.0.0-rc.29, pin files in .github/rc29-pin copied over
+# the action checkout) next to the same action unchanged (2.0.0rc27 = rs rc.28).
 # Every case prints one `RESULT ...` line and the step summary, so runs can be compared from the logs.
 
 on:
   push:
-    branches: [claude/project-thread-u751ea-rc28]
+    branches: [claude/project-thread-eigt2f]
   pull_request:
-    branches: [claude/project-thread-u751ea-rc28]
+    branches: [claude/project-thread-eigt2f]
 
 permissions: {}
 
 env:
-  NEW_REF: claude/project-thread-u751ea-rc28
-  OLD_REF: v3.0.0-rc0
+  NEW_REF: claude/project-thread-r495nc
+  OLD_REF: claude/project-thread-r495nc
 
 jobs:
   cases:
@@ -37,6 +38,10 @@ jobs:
           ref: ${{ matrix.action == 'new' && env.NEW_REF || env.OLD_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ matrix.action == 'new' }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
 
       - name: clean (src only)
         id: clean
@@ -44,7 +49,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|stress|cap|badfmt|fmtok
+          ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           step-summary: true
           summary-output-file: .out/clean.md
       - name: stress (odd names, latin1, CRLF, BOM, no final newline)
@@ -53,7 +58,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|src|cap|badfmt|fmtok
+          ignore: .github|.action|src|cap|badfmt|fmtok|incdemo|staledb
           step-summary: true
           summary-output-file: .out/stress.md
       - name: blank ignore (rs#574)
@@ -72,7 +77,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|src|stress|badfmt|fmtok
+          ignore: .github|.action|src|stress|badfmt|fmtok|incdemo|staledb
           tidy-checks: '-*,readability-braces-around-statements'
           file-annotations: true
           step-summary: true
@@ -83,7 +88,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|src|stress|cap
+          ignore: .github|.action|src|stress|cap|incdemo|staledb
           style: file
           tidy-checks: '-*'
           step-summary: true
@@ -95,9 +100,45 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|stress|cap|badfmt|fmtok
+          ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           style: file
           tidy-checks: ''
+      - name: configure src (compile DB)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake -S src -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON > /dev/null
+      - name: missing include, no database (rs#614)
+        id: nodb
+        continue-on-error: true
+        uses: ./.action
+        with:
+          files-changed-only: false
+          ignore: .github|.action|src|stress|cap|badfmt|fmtok|staledb|build
+          tidy-checks: '-*,readability-braces-around-statements'
+          step-summary: true
+          summary-output-file: .out/nodb.md
+      - name: missing include, with database (rs#615)
+        if: runner.os != 'Windows'
+        id: withdb
+        continue-on-error: true
+        uses: ./.action
+        with:
+          files-changed-only: false
+          ignore: .github|.action|src|stress|cap|badfmt|fmtok|staledb|build
+          tidy-checks: '-*,readability-braces-around-statements'
+          database: build
+          step-summary: true
+          summary-output-file: .out/withdb.md
+      - name: stale database (clang-tidy aborts)
+        id: staledb
+        continue-on-error: true
+        uses: ./.action
+        with:
+          files-changed-only: false
+          ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb|build
+          database: staledb
+          step-summary: true
+          summary-output-file: .out/staledb.md
       - name: bad input value (exit 2)
         id: badinput
         continue-on-error: true
@@ -116,8 +157,11 @@ jobs:
           BADFMT: ${{ toJSON(steps.badfmt) }}
           REPOCFG: ${{ toJSON(steps.repocfg) }}
           BADINPUT: ${{ toJSON(steps.badinput) }}
+          NODB: ${{ toJSON(steps.nodb) }}
+          WITHDB: ${{ toJSON(steps.withdb) }}
+          STALEDB: ${{ toJSON(steps.staledb) }}
         run: |
-          for s in CLEAN STRESS BLANK CAP BADFMT REPOCFG BADINPUT; do
+          for s in CLEAN STRESS BLANK CAP BADFMT REPOCFG BADINPUT NODB WITHDB STALEDB; do
             echo "RESULT ${{ matrix.os }} ${{ matrix.action }} $s $(jq -c '{outcome, out: .outputs}' <<< "${!s}")"
           done
           for f in .out/*.md; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
@@ -154,13 +198,17 @@ jobs:
           ref: ${{ env.NEW_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ true }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
       - name: new
         id: new
         continue-on-error: true
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|stress|cap|badfmt|fmtok
+          ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           version: ${{ matrix.version }}
       - name: Report
         if: always()
@@ -195,13 +243,17 @@ jobs:
           ref: ${{ env.NEW_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ true }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
       - name: new
         id: new
         continue-on-error: true
         uses: ./.action
         with:
           files-changed-only: false
-          ignore: .github|.action|stress|cap|badfmt|fmtok
+          ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
       - name: Report
         if: always()
         shell: bash
@@ -228,6 +280,10 @@ jobs:
           ref: ${{ env.NEW_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ true }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
       - name: new
         id: new
         continue-on-error: true
@@ -274,15 +330,17 @@ jobs:
           printf 'int   edited_space( ){return 1;}\n' >> "stress/with space.cpp"
           # a top-level file whose name starts with `-` (rs#600)
           printf 'int   top_dash( ){return 1;}\n' > ./-top.cpp
+          # an include that cannot be found without a compilation database (rs#614)
+          printf '#include "missing_lib.h"\nint use_two(){return lib_value();}\n' > incdemo/use2.cpp
           git add -A
-          git commit -m "test: rc.27 PR fixture"
+          git commit -m "test: rc.29 PR fixture"
           for a in new old; do
-            git push origin "HEAD:refs/heads/e2e/rc28-$a-${GITHUB_RUN_ID}"
+            git push origin "HEAD:refs/heads/e2e/rc29-$a-${GITHUB_RUN_ID}"
           done
-          echo "branches: e2e/rc28-new-${GITHUB_RUN_ID} e2e/rc28-old-${GITHUB_RUN_ID}"
+          echo "branches: e2e/rc29-new-${GITHUB_RUN_ID} e2e/rc29-old-${GITHUB_RUN_ID}"
 
   pr-lint:
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc28-')
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc29-')
     strategy:
       fail-fast: false
       matrix:
@@ -298,9 +356,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cpp-linter/cpp-linter-action
-          ref: ${{ startsWith(github.head_ref, 'e2e/rc28-new-') && env.NEW_REF || env.OLD_REF }}
+          ref: ${{ startsWith(github.head_ref, 'e2e/rc29-new-') && env.NEW_REF || env.OLD_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ startsWith(github.head_ref, 'e2e/rc29-new-') }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
       - name: lint
         id: lint
         continue-on-error: true
@@ -326,7 +388,7 @@ jobs:
 
   pr-auto-fix:
     needs: pr-lint
-    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc28-')
+    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'e2e/rc29-')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -337,9 +399,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cpp-linter/cpp-linter-action
-          ref: ${{ startsWith(github.head_ref, 'e2e/rc28-new-') && env.NEW_REF || env.OLD_REF }}
+          ref: ${{ startsWith(github.head_ref, 'e2e/rc29-new-') && env.NEW_REF || env.OLD_REF }}
           path: .action
           persist-credentials: false
+      - name: Pin cpp-linter 2.0.0rc29 (new only)
+        if: ${{ startsWith(github.head_ref, 'e2e/rc29-new-') }}
+        shell: bash
+        run: cp .github/rc29-pin/pyproject.toml .github/rc29-pin/uv.lock .action/
       - name: auto-fix
         id: fix
         continue-on-error: true
