@@ -28,6 +28,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,6 +51,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           step-summary: true
           summary-output-file: .out/clean.md
@@ -58,6 +61,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|src|cap|badfmt|fmtok|incdemo|staledb
           step-summary: true
           summary-output-file: .out/stress.md
@@ -67,6 +71,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: ''
           ignore-tidy: ''
           ignore-format: ''
@@ -77,6 +82,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|src|stress|badfmt|fmtok|incdemo|staledb
           tidy-checks: '-*,readability-braces-around-statements'
           file-annotations: true
@@ -88,6 +94,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|src|stress|cap|incdemo|staledb
           style: file
           tidy-checks: '-*'
@@ -100,6 +107,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           style: file
           tidy-checks: ''
@@ -113,6 +121,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|src|stress|cap|badfmt|fmtok|staledb|build
           tidy-checks: '-*,readability-braces-around-statements'
           step-summary: true
@@ -124,6 +133,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|src|stress|cap|badfmt|fmtok|staledb|build
           tidy-checks: '-*,readability-braces-around-statements'
           database: build
@@ -135,6 +145,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb|build
           database: staledb
           step-summary: true
@@ -188,6 +199,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -208,6 +221,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
           version: ${{ matrix.version }}
       - name: Report
@@ -229,6 +243,8 @@ jobs:
     container: ${{ matrix.image }}
     permissions:
       contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Install git and curl
         run: |
@@ -253,6 +269,7 @@ jobs:
         uses: ./.action
         with:
           files-changed-only: false
+          lines-changed-only: false
           ignore: .github|.action|stress|cap|badfmt|fmtok|incdemo|staledb
       - name: Report
         if: always()
@@ -304,7 +321,8 @@ jobs:
 
   make-pr-branches:
     # Branches for real PRs (opened by a person, so that workflows run on them).
-    if: github.event_name == 'push'
+    # Already made by run 46181741997 (PRs #89 and #90).
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
