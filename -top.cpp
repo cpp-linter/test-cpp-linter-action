@@ -1,1 +1,1 @@
-int   top_dash( ){return 1;}
+static int top_dash() { return 1; }
